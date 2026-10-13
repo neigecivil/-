@@ -28,7 +28,9 @@
 │  └─ adapters/
 │     └─ r2.js              R2 文件读写
 ├─ public/
-│  └─ index.html            前端页面（待补）
+│  └─ index.html            前端页面
+├─ tools/
+│  └─ dev.mjs               本地预览服务器
 └─ tests/                   测试，运行 node --test
 ```
 
@@ -42,6 +44,19 @@ node --test
 ```
 
 不需要安装任何东西，用的是 Node 自带的测试器。
+
+## 先在本地看一眼
+
+不用部署到 Cloudflare 也能把整站跑起来：
+
+```
+node tools/dev.mjs
+```
+
+然后打开 <http://127.0.0.1:4330>。第一次注册时，邀请码填 `LOCAL-DEV-CODE`。
+
+数据库用的是本机 SQLite、文件存在内存里，**关掉就清空**，随便折腾。
+这条路和线上唯一的差别是 Cookie 去掉了 Secure 标记（本地是 http）。
 
 ## 部署步骤
 
