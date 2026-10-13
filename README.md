@@ -22,7 +22,7 @@
 │  │  ├─ resources.js       分类、可见性、排序
 │  │  └─ errors.js          业务异常
 │  └─ store/
-│     ├─ d1.js              D1 存储适配器（待补）
+│     ├─ d1.js              D1 存储适配器（已在真实 SQLite 上验证）
 │     └─ memory.js          内存版，测试用
 ├─ public/
 │  └─ index.html            前端页面（待补）
