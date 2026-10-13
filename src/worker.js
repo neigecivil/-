@@ -64,12 +64,23 @@ function filesFor(env) {
   return backend === 'kv' ? createKvFiles(env.FILES) : createR2Files(env.FILES);
 }
 
+/* 环境变量以 MB 为单位，转成字节。填得不合法就用默认值。 */
+function mbToBytes(value, fallback) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? Math.round(n * 1024 * 1024) : fallback;
+}
+
 function buildService(env) {
   return createService({
     store: createD1Store(env.DB),
     files: filesFor(env),
     backend: String(env.FILE_BACKEND || 'r2').toLowerCase(),
     bootstrapCode: env.BOOTSTRAP_CODE || '',
+    storageLimitBytes: mbToBytes(env.STORAGE_LIMIT_MB, undefined),
+    storageReserveBytes: mbToBytes(env.STORAGE_RESERVE_MB, undefined),
+    storageWarnPercent: Number(env.STORAGE_WARN_PERCENT) || undefined,
+    /* 顶到上限时要不要连下载也停掉。默认停；填 false 就只停上传。 */
+    blockDownloadsWhenFull: String(env.GUARD_BLOCK_DOWNLOADS || 'true').toLowerCase() !== 'false',
   });
 }
 
@@ -179,6 +190,11 @@ async function handleApi(request, env, url) {
     const body = await readJsonBody(request);
     const invite = await service.createInvite(token, body);
     return json({ ok: true, invite }, 201);
+  }
+
+  if (section === 'admin' && id === 'usage' && method === 'GET') {
+    const usage = await service.usageReport(token);
+    return json({ ok: true, usage });
   }
 
   if (section === 'admin' && id === 'users' && method === 'GET') {

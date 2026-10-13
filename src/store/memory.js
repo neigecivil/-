@@ -67,6 +67,9 @@ function createMemoryStore() {
       },
       async byId(id) { return clone(resources.find((r) => r.id === id) || null); },
       async insert(resource) { resources.push(clone(resource)); },
+      async totalBytes() {
+        return resources.reduce((sum, r) => sum + Number(r.file_size || 0), 0);
+      },
       async update(id, fields) {
         const r = resources.find((x) => x.id === id);
         if (!r) return;

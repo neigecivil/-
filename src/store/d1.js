@@ -117,6 +117,10 @@ function createD1Store(db) {
             r.r2_key, r.file_name, r.file_size, r.mime, r.downloads || 0, r.created_at],
         );
       },
+      async totalBytes() {
+        const row = await one('SELECT COALESCE(SUM(file_size), 0) AS total FROM resources', []);
+        return row ? Number(row.total) : 0;
+      },
       async update(id, fields) {
         const sets = [];
         const args = [];

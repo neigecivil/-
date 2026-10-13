@@ -6,6 +6,7 @@
 export function createMemoryFiles() {
   const objects = new Map();
   const pending = new Map();
+  const aborts = [];
   let seq = 0;
 
   function handle(key, uploadId) {
@@ -26,12 +27,16 @@ export function createMemoryFiles() {
         pending.delete(id);
         return { key, size: total };
       },
-      async abort() { pending.delete(id); },
+      async abort() {
+        pending.delete(id);
+        aborts.push(key);
+      },
     };
   }
 
   return {
     objects,
+    aborts,
     async createMultipart(key) {
       const uploadId = 'up_' + (++seq);
       pending.set(key + '|' + uploadId, { key, parts: [] });

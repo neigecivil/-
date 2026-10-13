@@ -24,6 +24,10 @@ function setup(options) {
     uuid: () => 'x' + (++counter),
     token: () => 'tok' + (++counter),
     randomBytes: (n) => Buffer.alloc(n, (counter % 200) + 1),
+    storageLimitBytes: opts.storageLimitBytes,
+    storageReserveBytes: opts.storageReserveBytes,
+    storageWarnPercent: opts.storageWarnPercent,
+    blockDownloadsWhenFull: opts.blockDownloadsWhenFull,
   });
   return { store, files, clock, svc };
 }
@@ -33,7 +37,7 @@ async function makeAdmin(ctx) {
 }
 
 async function uploadOne(ctx, reg, meta, size) {
-  const started = await ctx.svc.startUpload(reg.token, { fileName: meta.fileName || 'note.txt' });
+  const started = await ctx.svc.startUpload(reg.token, { fileName: meta.fileName || 'note.txt', fileSize: size || 64 });
   const bytes = new Uint8Array(size || 64);
   const part = await ctx.svc.uploadPart(reg.token, {
     key: started.key, uploadId: started.uploadId, partNumber: 1, partCount: 1, data: bytes,
@@ -465,5 +469,124 @@ test('编辑资源', async (t) => {
     await ctx.svc.updateResource(admin.token, made.id, { title: '改个名' });
     const list = await ctx.svc.listResources(admin.token, new URLSearchParams());
     assert.equal(list.resources[0].downloads, 1);
+  });
+});
+
+/* ── 用量保护 ───────────────────────────────────────────── */
+
+test('用量保护', async (t) => {
+  /* 把额度调得很小，方便在测试里撞到边界：
+     总额度 1000 字节，预留 200，也就是最多只能用 800。 */
+  const TIGHT = {
+    bootstrapCode: 'OPEN-SESAME',
+    storageLimitBytes: 1000,
+    storageReserveBytes: 200,
+    storageWarnPercent: 80,
+  };
+
+  await t.test('空间够的时候正常上传', async () => {
+    const ctx = setup(TIGHT);
+    const admin = await makeAdmin(ctx);
+    const made = await uploadOne(ctx, admin, { title: '小文件', category: 'doc' }, 300);
+    assert.equal(made.title, '小文件');
+  });
+
+  await t.test('放不下就直接拒绝，并说明原因', async () => {
+    const ctx = setup(TIGHT);
+    const admin = await makeAdmin(ctx);
+    await uploadOne(ctx, admin, { title: '先占位', category: 'doc' }, 700);
+    await assert.rejects(
+      () => ctx.svc.startUpload(admin.token, { fileName: '大文件.bin', fileSize: 500 }),
+      /存储空间/,
+    );
+  });
+
+  await t.test('用了八成进入警告档，但还没锁', async () => {
+    const ctx = setup(TIGHT);
+    const admin = await makeAdmin(ctx);
+    await uploadOne(ctx, admin, { title: '占位', category: 'doc' }, 700);
+    const report = await ctx.svc.usageReport(admin.token);
+    assert.equal(report.level, 'warn');
+    assert.equal(report.blocked, false);
+    assert.equal(report.percent, 88);
+  });
+
+  await t.test('顶满之后，未登录的人下不了', async () => {
+    const ctx = setup(TIGHT);
+    const admin = await makeAdmin(ctx);
+    const made = await uploadOne(ctx, admin, { title: '公开文件', category: 'doc', visibility: 'public' }, 800);
+    await assert.rejects(() => ctx.svc.download(null, made.id), /暂时停止下载/);
+  });
+
+  await t.test('顶满之后，普通账号也下不了', async () => {
+    const ctx = setup(TIGHT);
+    const admin = await makeAdmin(ctx);
+    const invite = await ctx.svc.createInvite(admin.token, { role: 'guest', maxUses: 5 });
+    const guest = await ctx.svc.register({ username: '游客甲', password: 'harbor-lantern-77', inviteCode: invite.code });
+    const made = await uploadOne(ctx, admin, { title: '公开文件', category: 'doc', visibility: 'public' }, 800);
+    await assert.rejects(() => ctx.svc.download(guest.token, made.id), /暂时停止下载/);
+  });
+
+  await t.test('顶满之后管理员仍能下载——他要能取回文件、把空间清出来', async () => {
+    const ctx = setup(TIGHT);
+    const admin = await makeAdmin(ctx);
+    const made = await uploadOne(ctx, admin, { title: '公开文件', category: 'doc', visibility: 'public' }, 800);
+    const got = await ctx.svc.download(admin.token, made.id);
+    assert.equal(got.resource.title, '公开文件');
+  });
+
+  await t.test('前端少报大小时，最后一步会拦住并把分片清掉', async () => {
+    const ctx = setup(TIGHT);
+    const admin = await makeAdmin(ctx);
+
+    /* 开始时报 10 字节（骗过第一道检查），实际传 900 字节。 */
+    const started = await ctx.svc.startUpload(admin.token, { fileName: '撒谎.bin', fileSize: 10 });
+    const part = await ctx.svc.uploadPart(admin.token, {
+      key: started.key, uploadId: started.uploadId, partNumber: 1, partCount: 1, data: new Uint8Array(900),
+    });
+
+    await assert.rejects(
+      () => ctx.svc.completeUpload(admin.token, {
+        key: started.key,
+        uploadId: started.uploadId,
+        resourceId: started.resourceId,
+        partSize: started.partSize,
+        parts: [part],
+        meta: { title: '撒谎的文件', category: 'doc' },
+        file: { name: '撒谎.bin', size: 900, mime: 'application/octet-stream' },
+      }),
+      /存储空间/,
+    );
+
+    assert.equal(ctx.files.aborts.length, 1, '应该已经放弃这次上传');
+    const list = await ctx.svc.listResources(admin.token, new URLSearchParams());
+    assert.equal(list.total, 0, '不该留下资源记录');
+  });
+
+  await t.test('把「满了也停下载」关掉后，只在满的时候停上传', async () => {
+    const ctx = setup(Object.assign({}, TIGHT, { blockDownloadsWhenFull: false }));
+    const admin = await makeAdmin(ctx);
+    const made = await uploadOne(ctx, admin, { title: '公开文件', category: 'doc', visibility: 'public' }, 800);
+    const got = await ctx.svc.download(null, made.id);
+    assert.equal(got.resource.title, '公开文件');
+  });
+
+  await t.test('用量报表只有管理员能看', async () => {
+    const ctx = setup(TIGHT);
+    const admin = await makeAdmin(ctx);
+    const invite = await ctx.svc.createInvite(admin.token, { role: 'member', maxUses: 5 });
+    const member = await ctx.svc.register({ username: '成员甲', password: 'harbor-lantern-77', inviteCode: invite.code });
+    await assert.rejects(() => ctx.svc.usageReport(member.token), /管理员/);
+  });
+
+  await t.test('删掉文件腾出空间后，又能传了', async () => {
+    const ctx = setup(TIGHT);
+    const admin = await makeAdmin(ctx);
+    const made = await uploadOne(ctx, admin, { title: '占位', category: 'doc' }, 800);
+    await assert.rejects(() => ctx.svc.startUpload(admin.token, { fileName: 'x', fileSize: 100 }), /存储空间/);
+
+    await ctx.svc.deleteResource(admin.token, made.id);
+    const again = await ctx.svc.startUpload(admin.token, { fileName: 'x', fileSize: 100 });
+    assert.equal(!!again.key, true, '腾出空间后应该能继续传');
   });
 });

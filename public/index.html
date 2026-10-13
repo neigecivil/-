@@ -35,6 +35,9 @@
     --danger:      #a13d34;
     --danger-soft: #f7eeed;
     --on-accent:   #ffffff;
+    --warn-soft:   #fff8e6;
+    --warn-line:   #efd9a4;
+    --warn-ink:    #7a5a1e;
 
     --radius-xs: 6px;
     --radius-sm: 11px;
@@ -65,6 +68,9 @@
     --danger:      #e0908a;
     --danger-soft: #332422;
     --on-accent:   #0e1a16;
+    --warn-soft:   #2a2416;
+    --warn-line:   #574a24;
+    --warn-ink:    #e0c37a;
 
     --shadow-modal: 0 24px 60px -30px rgba(0, 0, 0, .9);
     --overlay: rgba(0, 0, 0, .6);
@@ -132,6 +138,16 @@
   .who b { font-size: 13.5px; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   .lede { margin: 20px 0 0; max-width: 60ch; color: var(--text-2); }
+
+  /* 用量提醒：只在快满或已满时出现，平时不占地方 */
+  .banner {
+    display: flex; align-items: center; gap: 10px;
+    margin: 16px 0 0; padding: 11px 15px;
+    border: 1px solid var(--warn-line); border-radius: var(--radius-sm);
+    background: var(--warn-soft); color: var(--warn-ink);
+    font-size: 13.5px; line-height: 1.6;
+  }
+  .banner.blocked { background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }
 
   /* ── 分类 ─────────────────────────────────────────────────── */
   .drawers { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 18px; border-bottom: 1px solid var(--line); }
@@ -401,6 +417,7 @@
       </div>
 
       <p class="lede" id="welcome"></p>
+      <div class="banner" id="usageBanner" hidden></div>
       <nav class="drawers" id="cats" aria-label="按分类筛选"></nav>
       <div class="subdrawers" id="subdrawers" hidden></div>
     </div>
@@ -600,6 +617,7 @@
         </div>
 
         <div id="adminResources" class="field-hidden">
+          <p class="hint" id="usageLine" style="margin-bottom:8px"></p>
           <p class="hint" style="margin-bottom:12px">每一条都能看到是谁传的。点「编辑」可以改标题、换分类、调可见范围。</p>
           <ul class="invite-list" id="resourceList"></ul>
         </div>
@@ -681,6 +699,7 @@
     authMode: 'login',
     pendingUpload: false,
     seq: 0,
+    usage: null,
     adminTab: 'invites',
     adminResources: [],
     editingId: null,
@@ -1044,7 +1063,7 @@
 
   /* 把文件切开，逐个发。每片都远小于 Cloudflare 的请求体上限。 */
   async function sendFileInParts(file, meta, onPart) {
-    var started = await api('/api/uploads', { method: 'POST', body: { fileName: file.name } });
+    var started = await api('/api/uploads', { method: 'POST', body: { fileName: file.name, fileSize: file.size } });
     var partCount = Math.max(1, Math.ceil(file.size / started.partSize));
     var parts = [];
 
@@ -1119,6 +1138,7 @@
       });
       closeModal($('uploadMask'));
       toast('传好了，大家现在能搜到它');
+      loadUsage();
       state.category = 'all';
       state.platform = 'all';
       setScope('all');
@@ -1224,6 +1244,25 @@
     }
   }
 
+  /* 拉一次用量。只有管理员能看，其它人请求会被拒，忽略即可。 */
+  async function loadUsage() {
+    var box = $('usageBanner');
+    if (!isAdmin()) { box.hidden = true; return; }
+    try {
+      var data = await api('/api/admin/usage');
+      state.usage = data.usage;
+      var u = data.usage;
+      if (u.level === 'ok') { box.hidden = true; return; }
+      box.hidden = false;
+      box.className = 'banner' + (u.blocked ? ' blocked' : '');
+      box.textContent = u.blocked
+        ? '存储已满（' + u.usedText + ' / ' + u.capText + '），上传和下载已自动暂停，避免产生费用。删掉一些资源就能恢复。'
+        : '存储快满了：已用 ' + u.usedText + '，可用上限 ' + u.capText + '，还剩 ' + u.remainingText + '。再满一点会自动停止上传。';
+    } catch (e) {
+      box.hidden = true;
+    }
+  }
+
   function switchAdminTab(tab) {
     state.adminTab = tab;
     var buttons = document.querySelectorAll('#adminTabs button');
@@ -1232,7 +1271,7 @@
     }
     $('adminInvites').classList.toggle('field-hidden', tab !== 'invites');
     $('adminResources').classList.toggle('field-hidden', tab !== 'resources');
-    if (tab === 'resources') loadAdminResources();
+    if (tab === 'resources') { loadUsage().then(loadAdminResources); }
   }
 
   /* 资源管理列表：每条都带上传者，方便追来源。 */
@@ -1252,6 +1291,9 @@
     try {
       var data = await api('/api/resources');
       state.adminResources = data.resources;
+      $('usageLine').textContent = state.usage
+        ? '已用 ' + state.usage.usedText + '，可用上限 ' + state.usage.capText + '（含 ' + state.usage.reserveText + ' 预留）'
+        : '';
       $('resourceList').innerHTML = data.resources.length
         ? data.resources.map(resourceRowHTML).join('')
         : '<li><span class="meta" style="margin-left:0">还没有任何资源</span></li>';
@@ -1429,6 +1471,7 @@
       api('/api/resources/' + removeBtn.dataset.del, { method: 'DELETE' })
         .then(function () {
           toast('已经删掉了');
+          loadUsage();
           loadCounts();
           loadList();
         })
@@ -1515,6 +1558,7 @@
     renderUser();
     renderCats();
     renderVisibilitySeg();
+    loadUsage();
     wireDrop();
     await loadCounts();
     await loadList();

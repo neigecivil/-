@@ -36,3 +36,14 @@ database_id = "03d771d3-34d0-4e2c-8869-40541ab8b4ba"
 
 # 第一个管理员用的一次性暗号，在控制台里配置成密钥，不要写进代码
 # BOOTSTRAP_CODE = "..."
+
+# ── 用量保护（全部可选，不填就用下面的默认值）──────────────────
+# 默认按 Cloudflare 免费额度算：R2 每月 10GB 存储，从这里预留 200MB 当缓冲。
+# 用到 80% 开始给管理员显示提醒；顶到上限（10GB - 200MB）自动停止上传，
+# 免得产生费用。
+#
+# [vars]
+# STORAGE_LIMIT_MB = "10240"       # 免费额度，默认 10GB
+# STORAGE_RESERVE_MB = "200"       # 预留缓冲，默认 200MB
+# STORAGE_WARN_PERCENT = "80"      # 到几成开始提醒
+# GUARD_BLOCK_DOWNLOADS = "true"   # 满了要不要连下载也停；填 false 就只停上传

@@ -12,6 +12,7 @@ import { can, canSee, canEdit, canDelete } from './roles.js';
 import { checkLoginAllowed, WINDOW_MS } from './loginGuard.js';
 import * as uploads from './uploads.js';
 import * as catalog from './resources.js';
+import { evaluateUsage, canStore, GUARD_DEFAULTS } from './guard.js';
 
 const SESSION_TTL_MS = 30 * 24 * 3600 * 1000;
 const USERNAME_RE = /^[\w\u4e00-\u9fa5-]{2,20}$/;
@@ -38,6 +39,22 @@ function createService(options) {
   const randomBytes = options.randomBytes || ((n) => crypto.randomBytes(n));
   const bootstrapCode = options.bootstrapCode || '';
   const backend = options.backend || 'r2';
+
+  /* 用量保护：接近免费额度就报警，顶到上限就拦住，避免产生费用。 */
+  const guardConfig = {
+    limitBytes: options.storageLimitBytes || GUARD_DEFAULTS.limitBytes,
+    reserveBytes: options.storageReserveBytes || GUARD_DEFAULTS.reserveBytes,
+    warnPercent: options.storageWarnPercent || GUARD_DEFAULTS.warnPercent,
+  };
+  const blockDownloadsWhenFull = options.blockDownloadsWhenFull !== false;
+
+  async function currentUsage() {
+    return evaluateUsage(await store.resources.totalBytes(), guardConfig);
+  }
+
+  function fullMessage() {
+    return '存储空间已经满了，为避免产生费用，暂时停止上传。请联系管理员清理。';
+  }
 
   const publicUser = (u) => ({ id: u.id, username: u.username, role: u.role });
 
@@ -247,6 +264,13 @@ function createService(options) {
   async function startUpload(sessionToken, input) {
     const user = await requireUser(sessionToken);
     if (!can(user.role, 'upload')) throw forbidden('当前账号只能下载，不能上传');
+
+    /* 先按前端报的大小估一下，放不下就别开始传 —— 传完再拒绝，钱已经花了。 */
+    const usage = await currentUsage();
+    if (usage.blocked || !canStore(usage, input.fileSize)) {
+      throw new AppError(507, fullMessage());
+    }
+
     const fileName = String(input.fileName || 'file');
     const resourceId = 'r_' + uuid();
     const key = uploads.buildKey(user.id, resourceId, fileName);
@@ -278,6 +302,15 @@ function createService(options) {
 
     const meta = catalog.validateMeta(input.meta || {});
     const multipart = await files.resumeMultipart(input.key, input.uploadId);
+
+    /* 前端可能少报了大小，这里拿真实值再判一次。
+       放不下就直接放弃这次上传，别把分片留在存储里占地方。 */
+    const usage = await currentUsage();
+    if (usage.blocked || !canStore(usage, fileSize)) {
+      try { await multipart.abort(); } catch (e) { /* 放弃失败也没办法，继续报错 */ }
+      throw new AppError(507, fullMessage());
+    }
+
     await multipart.complete(input.parts.map((p) => ({ partNumber: Number(p.partNumber), etag: p.etag })));
 
     const resource = {
@@ -330,6 +363,22 @@ function createService(options) {
     return catalog.present(fresh, user);
   }
 
+  /* 用量报表，给管理面板显示，也用来决定要不要横幅警告。 */
+  async function usageReport(sessionToken) {
+    const user = await requireUser(sessionToken);
+    if (!can(user.role, 'manageUsers')) throw forbidden('只有管理员能看用量');
+    const usage = await currentUsage();
+    return {
+      ...usage,
+      usedText: catalog.humanSize(usage.usedBytes),
+      limitText: catalog.humanSize(usage.limitBytes),
+      reserveText: catalog.humanSize(usage.reserveBytes),
+      capText: catalog.humanSize(usage.effectiveCapBytes),
+      remainingText: catalog.humanSize(usage.remainingBytes),
+      blocksDownloads: blockDownloadsWhenFull,
+    };
+  }
+
   async function deleteResource(sessionToken, id) {
     const user = await requireUser(sessionToken);
     const resource = await store.resources.byId(id);
@@ -344,6 +393,14 @@ function createService(options) {
   async function download(sessionToken, id) {
     const viewer = await optionalUser(sessionToken);
     const role = viewer ? viewer.role : VIEWER_ANONYMOUS;
+
+    /* 满了就停止对外下载（管理员除外 —— 他得能取回自己的东西、把空间清出来）。 */
+    if (blockDownloadsWhenFull && !can(role, 'manageUsers')) {
+      const usage = await currentUsage();
+      if (usage.blocked) {
+        throw new AppError(503, '存储空间已满，为避免产生费用暂时停止下载。请联系管理员。');
+      }
+    }
     const resource = await store.resources.byId(id);
     if (!resource) throw notFound('这份资源已经不在了');
     if (!canSee(role, resource)) throw forbidden('这份资源要登录才能看');
@@ -356,7 +413,7 @@ function createService(options) {
   return {
     register, login, logout, changePassword,
     createInvite, listInvites, listUsers,
-    listResources, startUpload, uploadPart, completeUpload, abortUpload,
+    listResources, startUpload, uploadPart, completeUpload, abortUpload, usageReport,
     updateResource, deleteResource, download,
     requireUser, optionalUser, publicUser,
   };
