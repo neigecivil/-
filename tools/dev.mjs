@@ -2,7 +2,7 @@
 
 /* 本地预览服务器。
    把 public/ 当静态目录，/api/* 交给真正的 Worker 处理，
-   数据库用本机 SQLite、文件存内存 —— 所以能在没有 Cloudflare 的情况下
+   数据库用本机 SQLite、文件走内存版 R2 —— 所以能在没有 Cloudflare 的情况下
    把整站跑起来，本机点着看。
 
    用法：node tools/dev.mjs      然后打开 http://127.0.0.1:4330
@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 
 import worker from '../src/worker.js';
 import { makeMigratedDb } from '../tests/fake-d1.mjs';
+import { makeFakeR2 } from '../tests/fake-r2.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PUBLIC_DIR = path.join(ROOT, 'public');
@@ -26,49 +27,10 @@ const MIME = {
   '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json; charset=utf-8',
 };
 
-function memoryBucket() {
-  const objects = new Map();
-  const jobs = new Map();
-  let seq = 0;
-  return {
-    objects,
-    async createMultipartUpload(key) {
-      const uploadId = 'dev' + (++seq);
-      jobs.set(key + '|' + uploadId, { parts: [] });
-      return { uploadId };
-    },
-    resumeMultipartUpload(key, uploadId) {
-      const id = key + '|' + uploadId;
-      return {
-        async uploadPart(partNumber, data) {
-          const job = jobs.get(id);
-          if (!job) throw new Error('没有这个上传任务');
-          job.parts.push({ partNumber, size: data.length });
-          return { partNumber, etag: 'etag-' + partNumber };
-        },
-        async complete(parts) {
-          const job = jobs.get(id);
-          if (!job) throw new Error('没有这个上传任务');
-          objects.set(key, {
-            size: job.parts.reduce((s, p) => s + p.size, 0),
-            body: '（本地预览：这里本该是文件内容）',
-          });
-          jobs.delete(id);
-        },
-        async abort() { jobs.delete(id); },
-      };
-    },
-    async get(key) {
-      const o = objects.get(key);
-      return o ? { body: o.body, size: o.size } : null;
-    },
-    async delete(key) { objects.delete(key); },
-  };
-}
-
 const env = {
   DB: makeMigratedDb(),
-  FILES: memoryBucket(),
+  FILES: makeFakeR2(),
+  FILE_BACKEND: 'r2',
   BOOTSTRAP_CODE: process.env.BOOTSTRAP_CODE || 'LOCAL-DEV-CODE',
 };
 

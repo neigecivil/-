@@ -3,46 +3,10 @@ import assert from 'node:assert/strict';
 
 import worker from '../src/worker.js';
 import { makeMigratedDb } from './fake-d1.mjs';
+import { makeFakeKv } from './fake-kv.mjs';
+import { makeFakeR2 } from './fake-r2.mjs';
 
 const BASE = 'https://reshub.example.com';
-
-/* 假 R2 桶：接口和真的 R2 绑定一致，够跑通分块上传。 */
-function fakeBucket() {
-  const objects = new Map();
-  const jobs = new Map();
-  let seq = 0;
-  return {
-    objects,
-    async createMultipartUpload(key) {
-      const uploadId = 'up' + (++seq);
-      jobs.set(key + '|' + uploadId, { key, parts: [] });
-      return { uploadId };
-    },
-    resumeMultipartUpload(key, uploadId) {
-      const id = key + '|' + uploadId;
-      return {
-        async uploadPart(partNumber, data) {
-          const job = jobs.get(id);
-          if (!job) throw new Error('没有这个上传任务');
-          job.parts.push({ partNumber, size: data.length });
-          return { partNumber, etag: 'etag-' + partNumber };
-        },
-        async complete(parts) {
-          const job = jobs.get(id);
-          if (!job) throw new Error('没有这个上传任务');
-          objects.set(key, { size: job.parts.reduce((s, p) => s + p.size, 0), body: 'BINARY-CONTENT' });
-          jobs.delete(id);
-        },
-        async abort() { jobs.delete(id); },
-      };
-    },
-    async get(key) {
-      const o = objects.get(key);
-      return o ? { body: o.body, size: o.size } : null;
-    },
-    async delete(key) { objects.delete(key); },
-  };
-}
 
 const fakeAssets = {
   async fetch() {
@@ -50,10 +14,17 @@ const fakeAssets = {
   },
 };
 
-function setup() {
+/* 默认用 R2（线上就是这么跑的）。传 { backend: 'kv' } 可以整组换成 KV。 */
+function setup(options) {
+  const backend = (options && options.backend) || 'r2';
   const db = makeMigratedDb();
-  const bucket = fakeBucket();
-  return { db, bucket, env: { DB: db, FILES: bucket, ASSETS: fakeAssets, BOOTSTRAP_CODE: 'OPEN-SESAME' } };
+  const files = backend === 'kv' ? makeFakeKv() : makeFakeR2();
+  return {
+    db,
+    files,
+    backend,
+    env: { DB: db, FILES: files, ASSETS: fakeAssets, BOOTSTRAP_CODE: 'OPEN-SESAME', FILE_BACKEND: backend },
+  };
 }
 
 async function call(env, path, options) {
@@ -190,7 +161,7 @@ test('注册与登录', async (t) => {
 
 test('分块上传走完整 HTTP 流程', async (t) => {
   await t.test('start → part → complete，资源就出现在列表里', async () => {
-    const { env, bucket } = setup();
+    const { env, files } = setup();
     const { cookie } = await registerAdmin(env);
 
     const started = await call(env, '/api/uploads', {
@@ -225,14 +196,15 @@ test('分块上传走完整 HTTP 流程', async (t) => {
 
     const list = await call(env, '/api/resources');
     assert.equal(list.data.total, 1);
-    assert.equal(bucket.objects.size, 1);
+    assert.equal(files.objects.size, 1);
   });
 
   await t.test('下载返回附件头，并且带上文件名', async () => {
     const { env } = setup();
     const { cookie } = await registerAdmin(env);
     const started = await call(env, '/api/uploads', { method: 'POST', cookie, body: { fileName: 'a.txt' } });
-    const bytes = new Uint8Array(16);
+    /* 传真实内容进去，这样能验证"读出来的就是传上去的"。 */
+    const bytes = new TextEncoder().encode('这是一份报告的内容');
     const part = await call(env, '/api/uploads/part', {
       method: 'PUT', cookie,
       headers: { 'x-r2-key': started.data.key, 'x-upload-id': started.data.uploadId, 'x-part-number': '1', 'x-part-count': '1' },
@@ -245,7 +217,7 @@ test('分块上传走完整 HTTP 流程', async (t) => {
         partSize: started.data.partSize,
         parts: [{ partNumber: 1, etag: part.data.etag }],
         meta: { title: '公开文件', category: 'doc', visibility: 'public' },
-        file: { name: '报告.txt', size: 16, mime: 'text/plain' },
+        file: { name: '报告.txt', size: bytes.length, mime: 'text/plain' },
       },
     });
 
@@ -253,7 +225,7 @@ test('分块上传走完整 HTTP 流程', async (t) => {
     assert.equal(dl.status, 200);
     assert.match(dl.headers.get('content-disposition'), /attachment/);
     assert.match(dl.headers.get('content-disposition'), /%E6%8A%A5%E5%91%8A/);
-    assert.equal(dl.text, 'BINARY-CONTENT');
+    assert.equal(dl.text, '这是一份报告的内容');
   });
 
   await t.test('游客不能开始上传', async () => {
@@ -319,5 +291,52 @@ test('管理员接口', async (t) => {
     const r = await call(env, '/api/admin/users', { cookie });
     assert.equal(r.status, 200);
     assert.equal(r.data.users.length, 1);
+  });
+});
+
+/* ── 换存储后端 ─────────────────────────────────────────── */
+
+test('把文件后端换成 KV 时同样能跑通', async (t) => {
+  await t.test('分块上传一条龙，内容能原样读回来', async () => {
+    const { env, files } = setup({ backend: 'kv' });
+    const { cookie } = await registerAdmin(env);
+
+    const started = await call(env, '/api/uploads', { method: 'POST', cookie, body: { fileName: 'kv.txt' } });
+    assert.equal(started.status, 201);
+    /* KV 的分片要小得多，服务端应该给出一致的分片大小 */
+    assert.equal(started.data.partSize, 2 * 1024 * 1024);
+
+    const payload = new TextEncoder().encode('走 KV 存的内容');
+    const part = await call(env, '/api/uploads/part', {
+      method: 'PUT', cookie,
+      headers: { 'x-r2-key': started.data.key, 'x-upload-id': started.data.uploadId, 'x-part-number': '1', 'x-part-count': '1' },
+      body: payload,
+    });
+    assert.equal(part.status, 200);
+
+    const done = await call(env, '/api/uploads/complete', {
+      method: 'POST', cookie,
+      body: {
+        key: started.data.key, uploadId: started.data.uploadId, resourceId: started.data.resourceId,
+        partSize: started.data.partSize,
+        parts: [{ partNumber: 1, etag: part.data.etag }],
+        meta: { title: 'KV 测试', category: 'doc', visibility: 'public' },
+        file: { name: 'kv.txt', size: payload.length, mime: 'text/plain' },
+      },
+    });
+    assert.equal(done.status, 201);
+
+    const dl = await call(env, '/api/download/' + done.data.resource.id);
+    assert.equal(dl.text, '走 KV 存的内容');
+    assert.equal(files.store.size >= 1, true);
+  });
+
+  await t.test('两种后端的分片大小确实不一样', async () => {
+    const r2 = setup({ backend: 'r2' });
+    const kv = setup({ backend: 'kv' });
+    const a = await call(r2.env, '/api/uploads', { method: 'POST', cookie: (await registerAdmin(r2.env)).cookie, body: { fileName: 'a' } });
+    const b = await call(kv.env, '/api/uploads', { method: 'POST', cookie: (await registerAdmin(kv.env)).cookie, body: { fileName: 'b' } });
+    assert.equal(a.data.partSize, 25 * 1024 * 1024);
+    assert.equal(b.data.partSize, 2 * 1024 * 1024);
   });
 });

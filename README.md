@@ -26,7 +26,8 @@
 │  │  ├─ d1.js              D1 存储适配器
 │  │  └─ memory.js          内存版，测试用
 │  └─ adapters/
-│     └─ r2.js              R2 文件读写
+│     ├─ r2.js              R2 文件读写（默认）
+│     └─ kv.js              Workers KV 文件读写（备用）
 ├─ public/
 │  └─ index.html            前端页面
 ├─ tools/
@@ -68,11 +69,29 @@ node tools/dev.mjs
 
 ### 二、在 Cloudflare 建两个存储
 
-1. 打开 <https://dash.cloudflare.com>，左侧选 **R2**，创建一个存储桶，
-   名字填 `reshub-files`
-2. 左侧选 **Workers & Pages** → **D1**，创建一个数据库，名字填 `reshub`
+1. 打开 <https://dash.cloudflare.com>，左侧 **Storage & databases** 里选 **R2**，
+   创建一个存储桶，名字填 `reshub-files`
+   - 注意：开通 R2 需要先绑定支付方式。免费额度内不会扣费（每月 10GB 存储、
+     100 万次写入、1000 万次读取，流量免费），但**不想绑卡就用下面的 KV 方案**
+2. 同样在 **Storage & databases** 里选 **D1**，创建一个数据库，名字填 `reshub`
 3. 进入刚建好的 D1，打开 **Console**，把 `migrations/0001_init.sql` 的
    全部内容粘进去执行
+
+<details>
+<summary><strong>不想绑卡？用 KV 代替 R2</strong></summary>
+
+Workers KV 属于免费计划，不需要支付方式。
+
+1. 在 **Storage & databases** 里选 **Workers KV**，创建一个命名空间，
+   名字填 `reshub-files`
+2. 把 `wrangler.toml` 里 `[[r2_buckets]]` 那一段注释掉，
+   把下面的 `[[kv_namespaces]]` 那一段取消注释
+3. 第四步绑定时，绑定 KV 命名空间而不是 R2 存储桶
+4. 再加一个变量 `FILE_BACKEND`，值填 `kv`
+
+代价：总共 1GB 存储，单个文件建议不超过 50MB。
+
+</details>
 
 ### 三、建 Worker 并连上仓库
 
@@ -85,7 +104,7 @@ node tools/dev.mjs
 进入这个 Worker 的 **Settings**：
 
 1. **Bindings** 里加两项：
-   - R2 bucket：变量名 `FILES`，选 `reshub-files`
+   - R2 bucket（用 KV 方案的话选 KV namespace）：变量名 `FILES`，选 `reshub-files`
    - D1 database：变量名 `DB`，选 `reshub`
 2. **Variables and Secrets** 里加一个**加密**变量：
    - 名字 `BOOTSTRAP_CODE`，值自己想一个长一点的字符串
@@ -117,5 +136,9 @@ node tools/dev.mjs
 
 ## 关于上传大小
 
-经过 Cloudflare 的请求有大小上限（免费版 100MB），所以前端会把文件切成 25MB 一片
-分开发送，在 R2 那边拼回去。这样单个文件可以远超 100MB。
+经过 Cloudflare 的请求有大小上限（免费版 100MB），所以前端会把文件切成小块分开发送，
+在存储那边拼回去。这样单个文件可以远超 100MB。
+
+分片大小跟着存储后端走：R2 用 25MB（R2 要求除最后一片外每片不小于 5MB），
+KV 用 2MB（KV 单个值上限 25MB）。前端不需要知道这些，服务端会告诉它。
+

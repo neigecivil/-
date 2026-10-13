@@ -17,10 +17,16 @@ enabled = true
 directory = "./public"
 binding = "ASSETS"
 
-# 文件存这里（先在控制台建一个同名 bucket）
+# 文件存 R2（先在控制台建一个同名存储桶）
 [[r2_buckets]]
 binding = "FILES"
 bucket_name = "reshub-files"
+
+# 备用方案：不想开通 R2 的话，改用 Workers KV。
+# 把上面 R2 那段注释掉，去掉下面这段的注释，并在控制台加一个变量 FILE_BACKEND=kv
+# [[kv_namespaces]]
+# binding = "FILES"
+# id = "在这里填你的 KV 命名空间 ID"
 
 # 账号和资源信息存这里（database_id 留待填写）
 [[d1_databases]]

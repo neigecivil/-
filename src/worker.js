@@ -6,6 +6,7 @@
 
 import { createService } from './core/service.js';
 import { createD1Store } from './store/d1.js';
+import { createKvFiles } from './adapters/kv.js';
 import { createR2Files } from './adapters/r2.js';
 import { CATEGORIES, PLATFORMS, VISIBILITIES } from './core/resources.js';
 import { AppError } from './core/errors.js';
@@ -55,10 +56,19 @@ async function readJsonBody(request) {
   }
 }
 
+/* 文件存哪儿由配置决定：
+   FILE_BACKEND 不填或填 r2 —— 用 R2（需要先开通，可选但容量大）
+   填 kv —— 用 Workers KV（免费计划自带，容量小一些） */
+function filesFor(env) {
+  const backend = String(env.FILE_BACKEND || 'r2').toLowerCase();
+  return backend === 'kv' ? createKvFiles(env.FILES) : createR2Files(env.FILES);
+}
+
 function buildService(env) {
   return createService({
     store: createD1Store(env.DB),
-    files: createR2Files(env.FILES),
+    files: filesFor(env),
+    backend: String(env.FILE_BACKEND || 'r2').toLowerCase(),
     bootstrapCode: env.BOOTSTRAP_CODE || '',
   });
 }

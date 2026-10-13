@@ -37,6 +37,7 @@ function createService(options) {
   const token = options.token || (() => crypto.randomBytes(24).toString('hex'));
   const randomBytes = options.randomBytes || ((n) => crypto.randomBytes(n));
   const bootstrapCode = options.bootstrapCode || '';
+  const backend = options.backend || 'r2';
 
   const publicUser = (u) => ({ id: u.id, username: u.username, role: u.role });
 
@@ -250,7 +251,7 @@ function createService(options) {
     const resourceId = 'r_' + uuid();
     const key = uploads.buildKey(user.id, resourceId, fileName);
     const multipart = await files.createMultipart(key);
-    return { key, uploadId: multipart.uploadId, resourceId, partSize: uploads.PART_SIZE };
+    return { key, uploadId: multipart.uploadId, resourceId, partSize: uploads.rulesFor(backend).partSize };
   }
 
   async function uploadPart(sessionToken, input) {
@@ -258,7 +259,7 @@ function createService(options) {
     if (!can(user.role, 'upload')) throw forbidden('当前账号只能下载，不能上传');
     if (!uploads.keyBelongsTo(input.key, user.id)) throw forbidden('这不是你的上传任务');
 
-    const verdict = uploads.checkPartSize(input.data.length, input.partNumber, input.partCount);
+    const verdict = uploads.checkPartSize(input.data.length, input.partNumber, input.partCount, backend);
     if (!verdict.ok) throw badRequest(verdict.reason);
 
     const multipart = await files.resumeMultipart(input.key, input.uploadId);
@@ -272,7 +273,7 @@ function createService(options) {
     if (!uploads.keyBelongsTo(input.key, user.id)) throw forbidden('这不是你的上传任务');
 
     const fileSize = Number(input.file && input.file.size);
-    const verdict = uploads.validateParts(input.parts, fileSize, input.partSize || uploads.PART_SIZE);
+    const verdict = uploads.validateParts(input.parts, fileSize, input.partSize || uploads.rulesFor(backend).partSize, backend);
     if (!verdict.ok) throw badRequest(verdict.reason);
 
     const meta = catalog.validateMeta(input.meta || {});
