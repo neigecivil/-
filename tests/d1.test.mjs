@@ -48,6 +48,21 @@ test('建表脚本', async (t) => {
     }
   });
 
+  await t.test('换行被压成空格之后，建表脚本依然能执行', () => {
+    /* Cloudflare 的 D1 控制台输入框是单行的，粘贴多行 SQL 时换行会被吃掉。
+       如果脚本里用了 -- 行注释，第一行注释就会把后面全部注释掉。
+       所以这份脚本不许用行注释 —— 这条测试就是钉死这个约定。 */
+    const flattened = MIGRATION.replace(/\s*\n\s*/g, ' ').replace(/\s+/g, ' ').trim();
+    assert.equal(/--/.test(MIGRATION), false, '建表脚本里出现了 -- 行注释，换行一旦丢失就会整份失效');
+
+    const db = makeD1Shim();
+    db.exec(flattened);
+    const rows = db.sqlite.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
+    const names = rows.map((r) => r.name);
+    assert.equal(names.includes('users'), true);
+    assert.equal(names.includes('resources'), true);
+  });
+
   await t.test('昵称唯一约束是按小写那份生效的', () => {
     const db = makeD1Shim();
     db.exec(MIGRATION);
