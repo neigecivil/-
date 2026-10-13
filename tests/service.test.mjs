@@ -76,6 +76,35 @@ test('注册', async (t) => {
     );
   });
 
+  await t.test('初始暗号从「邀请码」字段进来也能建出管理员——界面就是这么传的', async () => {
+    const ctx = setup({ bootstrapCode: 'OPEN-SESAME' });
+    const r = await ctx.svc.register({ username: '第一个', password: 'harbor-lantern-77', inviteCode: 'OPEN-SESAME' });
+    assert.equal(r.user.role, 'admin');
+  });
+
+  await t.test('初始暗号容得下大小写和横线', async () => {
+    const ctx = setup({ bootstrapCode: 'OPEN-SESAME' });
+    const r = await ctx.svc.register({ username: '第一个', password: 'harbor-lantern-77', inviteCode: 'open sesame' });
+    assert.equal(r.user.role, 'admin');
+  });
+
+  await t.test('已经有账号之后，初始暗号就失效了', async () => {
+    const ctx = setup({ bootstrapCode: 'OPEN-SESAME' });
+    await ctx.svc.register({ username: '第一个', password: 'harbor-lantern-77', inviteCode: 'OPEN-SESAME' });
+    await assert.rejects(
+      () => ctx.svc.register({ username: '第二个', password: 'harbor-lantern-77', inviteCode: 'OPEN-SESAME' }),
+      /一次|邀请码/,
+    );
+  });
+
+  await t.test('乱填邀请码会说清楚是没找到', async () => {
+    const ctx = setup({ bootstrapCode: 'OPEN-SESAME' });
+    await assert.rejects(
+      () => ctx.svc.register({ username: '路人', password: 'harbor-lantern-77', inviteCode: 'ZZZZZ-ZZZZZ' }),
+      /没找到/,
+    );
+  });
+
   await t.test('管理员发的邀请码能注册出成员', async () => {
     const ctx = setup({ bootstrapCode: 'OPEN-SESAME' });
     const admin = await makeAdmin(ctx);

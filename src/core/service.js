@@ -82,19 +82,24 @@ function createService(options) {
     if (await store.users.byUsername(lower)) throw conflict('这个昵称已经有人用了，换一个吧');
 
     let role = null;
-    const code = normalizeCode(input.inviteCode);
 
-    if (code) {
-      const invite = await store.invites.byCode(code);
+    /* 页面上只有一个「邀请码」输入框，所以初始暗号也是从这个字段进来的。
+       先当成邀请码去找；找不到，再比一比是不是初始暗号。
+       这两条路必须都走通，否则第一个管理员根本建不出来。 */
+    const code = normalizeCode(input.inviteCode) || normalizeCode(input.bootstrapCode);
+    if (!code) throw badRequest('注册需要邀请码');
+
+    const invite = await store.invites.byCode(code);
+    if (invite) {
       const verdict = checkInvite(invite, now());
       if (!verdict.ok) throw badRequest(verdict.reason);
       role = invite.role;
-    } else if (bootstrapCode && String(input.bootstrapCode || '') === bootstrapCode) {
+    } else if (bootstrapCode && code === normalizeCode(bootstrapCode)) {
       const count = await store.users.count();
       if (count > 0) throw forbidden('初始化暗号只能用一次，请改用邀请码');
       role = 'admin';
     } else {
-      throw badRequest('注册需要邀请码');
+      throw badRequest('没找到这个邀请码，确认一下有没有抄错');
     }
 
     const salt = randomBytes(16).toString('hex');
