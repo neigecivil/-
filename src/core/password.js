@@ -2,7 +2,7 @@
 
 /* 口令规则：纯函数，方便测试，也方便在接口层复用。 */
 
-const MIN_LENGTH = 10;
+const MIN_LENGTH = 8;
 const MAX_LENGTH = 200;
 
 /* 只收最常见的那些。宁可短，也不要一份没人维护的长名单。 */

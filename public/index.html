@@ -531,7 +531,11 @@
           </div>
           <div class="f">
             <label for="acctPass">密码</label>
-            <input id="acctPass" type="password" required minlength="10" autocomplete="current-password" placeholder="至少 10 位，别用生日和纯数字" />
+            <input id="acctPass" type="password" required minlength="8" autocomplete="current-password" placeholder="至少 8 位，别用生日和纯数字" />
+          </div>
+          <div class="f field-hidden" id="pass2Field">
+            <label for="acctPass2">再输一次密码</label>
+            <input id="acctPass2" type="password" autocomplete="new-password" placeholder="两次要一模一样" />
           </div>
           <div class="f field-hidden" id="inviteField">
             <label for="acctInvite">邀请码 <i>必填</i></label>
@@ -1083,9 +1087,12 @@
     $('authSubmit').textContent = isLogin ? '登录' : '注册并登录';
     $('authHint').textContent = isLogin
       ? '还没有账号？切到「注册」，需要邀请码。'
-      : '密码至少 10 位，别用生日和纯数字。';
+      : '密码至少 8 位，两次要输入一致。';
     $('inviteField').classList.toggle('field-hidden', isLogin);
     $('acctInvite').required = !isLogin;
+    $('pass2Field').classList.toggle('field-hidden', isLogin);
+    $('acctPass2').required = !isLogin;
+    $('acctPass').setAttribute('autocomplete', isLogin ? 'current-password' : 'new-password');
   }
   function openAuth(mode) {
     state.authMode = mode || 'login';
@@ -1098,9 +1105,16 @@
     e.preventDefault();
     var button = $('authSubmit');
     button.disabled = true;
+    var password = $('acctPass').value;
+    if (state.authMode === 'register' && password !== $('acctPass2').value) {
+      toast('两次输入的密码不一样，再对一遍');
+      $('acctPass2').focus();
+      return;
+    }
+
     var body = {
       username: $('acctName').value.trim(),
-      password: $('acctPass').value,
+      password: password,
     };
     if (state.authMode === 'register') body.inviteCode = $('acctInvite').value.trim();
 
@@ -1282,8 +1296,7 @@
   $('uploadForm').addEventListener('submit', doUpload);
   $('uploadClose').addEventListener('click', function () { closeModal($('uploadMask')); });
   $('uploadCancel').addEventListener('click', function () { closeModal($('uploadMask')); });
-  $('uploadMask').addEventListener('click', function (e) { if (e.target === $('uploadMask')) closeModal($('uploadMask')); });
-
+  
   $('authTabs').addEventListener('click', function (e) {
     var button = e.target.closest('button[data-tab]');
     if (!button) return;
@@ -1292,8 +1305,7 @@
   });
   $('authForm').addEventListener('submit', doAuth);
   $('authClose').addEventListener('click', function () { closeModal($('authMask')); });
-  $('authMask').addEventListener('click', function (e) { if (e.target === $('authMask')) closeModal($('authMask')); });
-
+  
   $('invCreate').addEventListener('click', createInvite);
   $('invCopy').addEventListener('click', function () {
     var text = $('invCode').textContent;
@@ -1305,13 +1317,11 @@
   });
   $('adminClose').addEventListener('click', function () { closeModal($('adminMask')); });
   $('adminDone').addEventListener('click', function () { closeModal($('adminMask')); });
-  $('adminMask').addEventListener('click', function (e) { if (e.target === $('adminMask')) closeModal($('adminMask')); });
-
+  
   $('notesLink').addEventListener('click', openNotes);
   $('notesOk').addEventListener('click', dismissNotes);
   $('notesClose').addEventListener('click', dismissNotes);
-  $('notesMask').addEventListener('click', function (e) { if (e.target === $('notesMask')) dismissNotes(); });
-
+  
   /* ── 启动 ─────────────────────────────────────────────────── */
   (async function boot() {
     applyTheme(document.documentElement.getAttribute('data-theme') || 'light');

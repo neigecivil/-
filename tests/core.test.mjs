@@ -95,6 +95,14 @@ test('口令规则', async (t) => {
     assert.match(problems.join(' '), /昵称/);
   });
 
+  await t.test('8 位能过，7 位不行——这是定好的下限', () => {
+    assert.equal(MIN_LENGTH, 8);
+    assert.equal('harbor-88'.length >= MIN_LENGTH, true);
+    assert.equal(isStrong('harbor-88'), true);
+    assert.equal('harbo-8'.length, 7);
+    assert.equal(checkPassword('harbo-8').length > 0, true);
+  });
+
   await t.test('够长且不含明显问题的能通过', () => {
     assert.equal(isStrong('harbor-lantern-77', { username: 'alice' }), true);
   });
