@@ -1,0 +1,32 @@
+# Cloudflare Workers 配置
+# 部署前需要把下面的 database_id 换成你自己的 D1 编号
+
+name = "reshub"
+main = "src/worker.js"
+
+# 这个日期之后 nodejs_compat 默认开启，node:crypto 等可以直接用
+compatibility_date = "2026-08-04"
+compatibility_flags = ["nodejs_compat"]
+
+[observability]
+enabled = true
+
+# 前端静态文件：public/ 里的文件由 Cloudflare 直接发出去，
+# 只有 /api/* 的请求才会进到 Worker 里
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+# 文件存这里（先在控制台建一个同名 bucket）
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "reshub-files"
+
+# 账号和资源信息存这里（database_id 留待填写）
+[[d1_databases]]
+binding = "DB"
+database_name = "reshub"
+database_id = "在这里填你的 D1 编号"
+
+# 第一个管理员用的一次性暗号，在控制台里配置成密钥，不要写进代码
+# BOOTSTRAP_CODE = "..."

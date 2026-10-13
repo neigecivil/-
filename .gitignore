@@ -1,0 +1,10 @@
+node_modules/
+
+# wrangler 的本地状态和密钥，绝不提交
+.wrangler/
+.dev.vars
+.env
+
+*.log
+.DS_Store
+Thumbs.db

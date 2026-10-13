@@ -1,0 +1,124 @@
+# 资源分享站 · 云端版规格书
+
+本机版继续保留，这份规格描述部署到 Cloudflare 的版本。
+
+## 1. 为什么要云端版
+
+本机版的限制很明确：电脑得开着、同一个 Wi-Fi、外网访问不了。云端版要解决的是"我不开电脑，别人也能访问"。
+
+## 2. 技术选型
+
+| 用途 | 选型 | 说明 |
+| --- | --- | --- |
+| 页面与接口 | Cloudflare Workers | 一个 `fetch` 处理器，不再有 `http.createServer` |
+| 文件 | R2 | 取代本机版的 `uploads/` |
+| 账号与资源数据 | D1 | 取代本机版的 `data/db.json` |
+| 登录状态 | D1 里的 sessions 表 | 无状态环境不能靠内存记会话 |
+
+`node:crypto` 在 Workers 里可用（scrypt 不在不支持名单内），所以口令哈希逻辑可以照搬本机版。
+
+## 3. 角色模型
+
+三种角色，权限写死在 `src/core/roles.js` 里，不散落到接口中。
+
+| 能力 | admin | member | guest |
+| --- | --- | --- | --- |
+| 上传文件 | ✓ | ✓ | ✗ |
+| 下载公开资源 | ✓ | ✓ | ✓ |
+| 下载「仅成员」资源 | ✓ | ✓ | ✗ |
+| 删除自己的资源 | ✓ | ✓ | ✗ |
+| 删除任何人的资源 | ✓ | ✗ | ✗ |
+| 生成邀请码 | ✓ | ✗ | ✗ |
+| 管理用户 | ✓ | ✗ | ✗ |
+
+**游客是只读的**：即使名下还留着从前上传的文件，也不能自己删。降级成游客的人，他的旧文件由管理员处理。
+
+## 4. 邀请码机制
+
+关闭自由注册。注册时必须提供有效邀请码。
+
+- 码长 10 位，字符集去掉容易看错的 `0 O 1 I L`
+- 展示时每五位加一个横线：`ABCDE-FGHIJ`
+- 输入时忽略大小写、空格和横线
+- 每个码记录：角色、可用次数、已用次数、过期时间、是否作废、创建者
+- 失效原因分四种并分别提示：不存在 / 已作废 / 已过期 / 已用完
+
+管理员可以在后台生成邀请码，指定角色和有效期。
+
+## 5. 口令安全
+
+注册和改密码时都过同一套规则（`src/core/password.js`），**一次列出全部问题**，而不是改一个报一个。
+
+- 长度至少 10 个字符
+- 不能是常见弱口令（内置一份短名单）
+- 不能全是数字
+- 不能包含昵称，也不能被昵称包含
+
+### 登录失败限制
+
+- 15 分钟内失败 5 次即锁定，锁定同样 15 分钟
+- 提示还剩多少分钟，不透露账号是否存在
+
+### 其它
+
+- 口令用 scrypt 加盐哈希，比对用定时安全比较
+- 会话存 D1，带过期时间；退出即删除
+- 改密码后，该用户的所有其它会话立即失效
+
+## 6. 资源可见性
+
+每份资源带一个 `visibility`：
+
+- `public` —— 游客也能下载，默认值
+- `members` —— 只有成员和管理员能下载
+
+列表接口按角色过滤：游客拿不到 `members` 的资源，直接访问下载地址同样会被拒（**服务端拦，不是前端藏**）。
+
+## 7. 上传大小
+
+- 经过 Worker 的上传受 Cloudflare 请求体上限约束（免费版 100MB），谁都一样，包括管理员
+- 本机版不受此限，上限由配置决定
+
+### 大文件方案（第二阶段）
+
+浏览器向 Worker 申请分块，直接写进 R2，绕开请求体上限。R2 单次上传上限 5 GiB，分块可到 5 TiB。**本期先不做**，先把基础版跑通。
+
+## 8. 数据模型
+
+```
+users      id, username, password_hash, salt, role, created_at, disabled_at
+invites    code, role, max_uses, used_count, expires_at, revoked_at, created_by, created_at
+resources  id, owner_id, title, description, category, platform,
+           visibility, r2_key, file_name, file_size, mime, downloads, created_at
+sessions   token, user_id, created_at, expires_at
+login_failures  username, occurred_at
+```
+
+R2 的对象键：`u/<ownerId>/<resourceId><扩展名>`，按上传者分目录。
+
+## 9. 接口
+
+沿用本机版的形状，只增不改：
+
+```
+POST /api/register          需带邀请码
+POST /api/login
+POST /api/logout
+GET  /api/me
+POST /api/password          改密码（新）
+GET  /api/resources
+POST /api/upload
+DELETE /api/resources/:id
+GET  /api/download/:id
+GET  /api/admin/invites     管理员（新）
+POST /api/admin/invites     管理员（新）
+GET  /api/admin/users       管理员（新）
+```
+
+## 10. 明确不做
+
+- 大文件分块直传（第二阶段）
+- 邮箱验证、密码找回
+- 资源在线预览
+- 操作审计日志
+- 评论、点赞
