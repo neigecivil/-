@@ -32,7 +32,7 @@ bucket_name = "reshub-files"
 [[d1_databases]]
 binding = "DB"
 database_name = "reshub"
-database_id = "在这里填你的 D1 编号"
+database_id = "03d771d3-34d0-4e2c-8869-40541ab8b4ba"
 
 # 第一个管理员用的一次性暗号，在控制台里配置成密钥，不要写进代码
 # BOOTSTRAP_CODE = "..."
