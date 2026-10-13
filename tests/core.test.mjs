@@ -31,11 +31,12 @@ test('角色权限', async (t) => {
     assert.equal(can('guest', 'createInvite'), false);
   });
 
-  await t.test('游客看不到「仅成员」的资源', () => {
+  await t.test('没登录看不到「登录可见」的资源，有账号就能看', () => {
     const open = { visibility: 'public' };
     const internal = { visibility: 'members' };
-    assert.equal(canSee('guest', open), true);
-    assert.equal(canSee('guest', internal), false);
+    assert.equal(canSee('anonymous', open), true);
+    assert.equal(canSee('anonymous', internal), false);
+    assert.equal(canSee('guest', internal), true);
     assert.equal(canSee('member', internal), true);
     assert.equal(canSee('admin', internal), true);
   });

@@ -15,7 +15,7 @@ import * as catalog from './resources.js';
 
 const SESSION_TTL_MS = 30 * 24 * 3600 * 1000;
 const USERNAME_RE = /^[\w\u4e00-\u9fa5-]{2,20}$/;
-const SORT_VIEWER_GUEST = 'guest';
+const VIEWER_ANONYMOUS = 'anonymous';
 const CODE_BYTES = 16;   // 邀请码取模用，给足随机量
 
 function hashPassword(password, salt) {
@@ -230,7 +230,7 @@ function createService(options) {
 
   async function listResources(sessionToken, query) {
     const viewer = await optionalUser(sessionToken);
-    const role = viewer ? viewer.role : SORT_VIEWER_GUEST;
+    const role = viewer ? viewer.role : VIEWER_ANONYMOUS;
     const visibilities = can(role, 'seeMembersOnly') ? ['public', 'members'] : ['public'];
 
     const rows = await store.resources.query({
@@ -321,10 +321,10 @@ function createService(options) {
 
   async function download(sessionToken, id) {
     const viewer = await optionalUser(sessionToken);
-    const role = viewer ? viewer.role : SORT_VIEWER_GUEST;
+    const role = viewer ? viewer.role : VIEWER_ANONYMOUS;
     const resource = await store.resources.byId(id);
     if (!resource) throw notFound('这份资源已经不在了');
-    if (!canSee(role, resource)) throw forbidden('这份资源只对成员开放，登录之后再看');
+    if (!canSee(role, resource)) throw forbidden('这份资源要登录才能看');
 
     await store.resources.bumpDownloads(id);
     const object = await files.read(resource.r2_key);

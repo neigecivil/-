@@ -192,14 +192,17 @@ test('角色权限', async (t) => {
     await assert.rejects(() => ctx.svc.startUpload(guest.token, { fileName: 'a.txt' }), /只能下载/);
   });
 
-  await t.test('游客看不到「仅成员」的资源', async () => {
+  await t.test('有账号就能看内部资料，没登录的只能看公开的', async () => {
     const { ctx, admin, guest } = await withGuest();
     await uploadOne(ctx, admin, { title: '内部资料', category: 'doc', visibility: 'members' }, 32);
     await uploadOne(ctx, admin, { title: '公开资料', category: 'doc', visibility: 'public' }, 32);
 
     const asGuest = await ctx.svc.listResources(guest.token, new URLSearchParams());
-    assert.equal(asGuest.total, 1);
-    assert.equal(asGuest.resources[0].title, '公开资料');
+    assert.equal(asGuest.total, 2, '有账号应该两条都看得到');
+
+    const asAnon = await ctx.svc.listResources(null, new URLSearchParams());
+    assert.equal(asAnon.total, 1, '没登录只看得到公开的那条');
+    assert.equal(asAnon.resources[0].title, '公开资料');
 
     const asAdmin = await ctx.svc.listResources(admin.token, new URLSearchParams());
     assert.equal(asAdmin.total, 2);
@@ -212,10 +215,17 @@ test('角色权限', async (t) => {
     assert.equal(anon.total, 0);
   });
 
-  await t.test('游客直接点下载地址也拿不到「仅成员」的文件', async () => {
+  await t.test('没登录时直接点内部资料的下载地址也拿不到', async () => {
+    const { ctx, admin } = await withGuest();
+    const made = await uploadOne(ctx, admin, { title: '内部资料', category: 'doc', visibility: 'members' }, 32);
+    await assert.rejects(() => ctx.svc.download(null, made.id), /登录/);
+  });
+
+  await t.test('游客能下载内部资料', async () => {
     const { ctx, admin, guest } = await withGuest();
     const made = await uploadOne(ctx, admin, { title: '内部资料', category: 'doc', visibility: 'members' }, 32);
-    await assert.rejects(() => ctx.svc.download(guest.token, made.id), /成员/);
+    const got = await ctx.svc.download(guest.token, made.id);
+    assert.equal(got.resource.title, '内部资料');
   });
 
   await t.test('成员删不掉别人的文件', async () => {

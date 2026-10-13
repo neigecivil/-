@@ -21,7 +21,7 @@ const PLATFORMS = [
 
 const VISIBILITIES = [
   { id: 'public', name: '所有人' },
-  { id: 'members', name: '仅成员' },
+  { id: 'members', name: '登录可见' },
 ];
 
 const CATEGORY_IDS = CATEGORIES.map((c) => c.id);
