@@ -161,4 +161,4 @@ function createD1Store(db) {
   };
 }
 
-module.exports = { createD1Store, RESOURCE_COLUMNS };
+export { createD1Store, RESOURCE_COLUMNS };

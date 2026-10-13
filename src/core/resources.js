@@ -3,7 +3,7 @@
 /* 资源领域：分类、平台、可见性、校验、展示形态、排序。
    和本机版保持一致的字段，多了 visibility（游客能不能看到）。 */
 
-const { badRequest } = require('./errors');
+import { badRequest } from './errors.js';
 
 const CATEGORIES = [
   { id: 'doc', name: '文档' },
@@ -104,7 +104,7 @@ function sortList(list, sort, viewer) {
   return copy.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
 }
 
-module.exports = {
+export {
   CATEGORIES, PLATFORMS, VISIBILITIES,
   CATEGORY_IDS, PLATFORM_IDS, VISIBILITY_IDS, PLATFORM_CATEGORY, SORTS,
   validateMeta, normalizePlatform, categoryName, platformName, visibilityName,

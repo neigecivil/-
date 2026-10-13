@@ -17,4 +17,4 @@ const notFound = (m) => new AppError(404, m);
 const conflict = (m) => new AppError(409, m);
 const tooLarge = (m) => new AppError(413, m);
 
-module.exports = { AppError, badRequest, unauthorized, forbidden, notFound, conflict, tooLarge };
+export { AppError, badRequest, unauthorized, forbidden, notFound, conflict, tooLarge };

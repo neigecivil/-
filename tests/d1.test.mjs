@@ -1,48 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { DatabaseSync } from 'node:sqlite';
-
-import d1Module from '../src/store/d1.js';
-import serviceModule from '../src/core/service.js';
+import { createD1Store } from '../src/store/d1.js';
+import { createService } from '../src/core/service.js';
 import { createMemoryFiles } from './fake-files.mjs';
-
-const { createD1Store } = d1Module;
-const { createService } = serviceModule;
-
-const MIGRATION = readFileSync(new URL('../migrations/0001_init.sql', import.meta.url), 'utf8');
-
-/* D1 和 SQLite 是同一套 SQL 方言，所以可以在本机用 SQLite 把
-   D1 适配器的 SQL 真跑一遍。生产换回真的 D1，代码一行不用改。 */
-function makeD1Shim() {
-  const sqlite = new DatabaseSync(':memory:');
-  const clean = (v) => {
-    if (v === undefined) return null;
-    if (typeof v === 'boolean') return v ? 1 : 0;
-    return v;
-  };
-  return {
-    sqlite,
-    exec(sql) { sqlite.exec(sql); },
-    prepare(sql) {
-      let bound = [];
-      const api = {
-        bind(...args) { bound = args.map(clean); return api; },
-        async run() { sqlite.prepare(sql).run(...bound); return { success: true }; },
-        async first() {
-          const row = sqlite.prepare(sql).get(...bound);
-          return row === undefined ? null : row;
-        },
-        async all() { return { results: sqlite.prepare(sql).all(...bound) }; },
-      };
-      return api;
-    },
-  };
-}
+import { makeD1Shim, makeMigratedDb, MIGRATION } from './fake-d1.mjs';
 
 function setup() {
-  const db = makeD1Shim();
-  db.exec(MIGRATION);
+  const db = makeMigratedDb();
   const store = createD1Store(db);
   const files = createMemoryFiles();
   let counter = 0;
@@ -76,8 +40,7 @@ async function uploadOne(ctx, reg, meta, size) {
 
 test('建表脚本', async (t) => {
   await t.test('可以整套执行，五张表都在', () => {
-    const db = makeD1Shim();
-    db.exec(MIGRATION);
+    const db = makeMigratedDb();
     const rows = db.sqlite.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all();
     const names = rows.map((r) => r.name).filter((n) => !n.startsWith('sqlite_'));
     for (const expected of ['users', 'invites', 'resources', 'sessions', 'login_failures']) {

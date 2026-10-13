@@ -1,14 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import serviceModule from '../src/core/service.js';
-import memoryModule from '../src/store/memory.js';
-import uploads from '../src/core/uploads.js';
-
+import { createService } from '../src/core/service.js';
+import { createMemoryStore } from '../src/store/memory.js';
 import { createMemoryFiles } from './fake-files.mjs';
-
-const { createService } = serviceModule;
-const { createMemoryStore } = memoryModule;
 
 function clockAt(start) {
   let value = start;

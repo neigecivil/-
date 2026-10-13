@@ -51,4 +51,4 @@ function isStrong(password, options) {
   return checkPassword(password, options).length === 0;
 }
 
-module.exports = { MIN_LENGTH, MAX_LENGTH, WEAK, checkPassword, isStrong };
+export { MIN_LENGTH, MAX_LENGTH, WEAK, checkPassword, isStrong };

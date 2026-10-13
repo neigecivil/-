@@ -3,15 +3,15 @@
 /* 应用逻辑：把规则、存储、文件三块拼起来。
    这里是唯一的业务入口，Worker 只负责搬运 HTTP。 */
 
-const crypto = require('crypto');
+import crypto from 'node:crypto';
 
-const { AppError, badRequest, unauthorized, forbidden, notFound, conflict } = require('./errors');
-const { checkPassword } = require('./password');
-const { checkInvite, normalizeCode, generateCode } = require('./invite');
-const { can, canSee, canDelete } = require('./roles');
-const { checkLoginAllowed, WINDOW_MS } = require('./loginGuard');
-const uploads = require('./uploads');
-const catalog = require('./resources');
+import { AppError, badRequest, unauthorized, forbidden, notFound, conflict } from './errors.js';
+import { checkPassword } from './password.js';
+import { checkInvite, normalizeCode, generateCode } from './invite.js';
+import { can, canSee, canDelete } from './roles.js';
+import { checkLoginAllowed, WINDOW_MS } from './loginGuard.js';
+import * as uploads from './uploads.js';
+import * as catalog from './resources.js';
 
 const SESSION_TTL_MS = 30 * 24 * 3600 * 1000;
 const USERNAME_RE = /^[\w\u4e00-\u9fa5-]{2,20}$/;
@@ -334,4 +334,4 @@ function createService(options) {
   };
 }
 
-module.exports = { createService, hashPassword, passwordMatches, SESSION_TTL_MS };
+export { createService, hashPassword, passwordMatches, SESSION_TTL_MS };

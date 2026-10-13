@@ -64,4 +64,4 @@ function checkInvite(input, now) {
   return { ok: true, reason: '' };
 }
 
-module.exports = { ALPHABET, CODE_LENGTH, generateCode, normalizeCode, formatCode, normalizeInvite, checkInvite };
+export { ALPHABET, CODE_LENGTH, generateCode, normalizeCode, formatCode, normalizeInvite, checkInvite };

@@ -63,4 +63,4 @@ function canDelete(role, user, resource) {
   return resource.ownerId === user.id;
 }
 
-module.exports = { ROLES, VISIBILITIES, RULES, isRole, can, canSee, canDelete };
+export { ROLES, VISIBILITIES, RULES, isRole, can, canSee, canDelete };

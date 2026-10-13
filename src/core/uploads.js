@@ -69,7 +69,7 @@ function checkPartSize(size, partNumber, partCount) {
   return { ok: true };
 }
 
-module.exports = {
+export {
   PART_SIZE, MIN_PART_SIZE, MAX_PARTS, MAX_FILE_SIZE,
   extensionOf, buildKey, keyBelongsTo, planParts, validateParts, checkPartSize,
 };

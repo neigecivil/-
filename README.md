@@ -10,8 +10,9 @@
 ├─ wrangler.toml            部署配置（绑定了 R2 和 D1）
 ├─ migrations/
 │  └─ 0001_init.sql         建表脚本
+├─ package.json             声明用 ES 模块
 ├─ src/
-│  ├─ worker.js             HTTP 层：路由、Cookie、响应（待补）
+│  ├─ worker.js             HTTP 层：路由、Cookie、响应
 │  ├─ core/                 业务逻辑，不依赖 Cloudflare
 │  │  ├─ service.js         唯一的业务入口
 │  │  ├─ roles.js           角色权限表
@@ -21,9 +22,11 @@
 │  │  ├─ uploads.js         分块上传规则
 │  │  ├─ resources.js       分类、可见性、排序
 │  │  └─ errors.js          业务异常
-│  └─ store/
-│     ├─ d1.js              D1 存储适配器（已在真实 SQLite 上验证）
-│     └─ memory.js          内存版，测试用
+│  ├─ store/
+│  │  ├─ d1.js              D1 存储适配器
+│  │  └─ memory.js          内存版，测试用
+│  └─ adapters/
+│     └─ r2.js              R2 文件读写
 ├─ public/
 │  └─ index.html            前端页面（待补）
 └─ tests/                   测试，运行 node --test

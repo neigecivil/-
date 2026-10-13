@@ -108,4 +108,4 @@ function createMemoryStore() {
   };
 }
 
-module.exports = { createMemoryStore };
+export { createMemoryStore };

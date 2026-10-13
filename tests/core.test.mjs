@@ -1,15 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import roles from '../src/core/roles.js';
-import password from '../src/core/password.js';
-import invite from '../src/core/invite.js';
-import guard from '../src/core/loginGuard.js';
-
-const { can, canSee, canDelete, isRole } = roles;
-const { checkPassword, isStrong, MIN_LENGTH } = password;
-const { generateCode, normalizeCode, formatCode, checkInvite } = invite;
-const { checkLoginAllowed, MAX_FAILURES, WINDOW_MS } = guard;
+import { can, canSee, canDelete, isRole } from '../src/core/roles.js';
+import { checkPassword, isStrong, MIN_LENGTH } from '../src/core/password.js';
+import { generateCode, normalizeCode, formatCode, checkInvite } from '../src/core/invite.js';
+import { checkLoginAllowed, MAX_FAILURES, WINDOW_MS } from '../src/core/loginGuard.js';
 
 /* ── 角色与权限 ─────────────────────────────────────────── */
 

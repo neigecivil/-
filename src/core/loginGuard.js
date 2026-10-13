@@ -29,4 +29,4 @@ function checkLoginAllowed(failures, now) {
   };
 }
 
-module.exports = { WINDOW_MS, MAX_FAILURES, LOCK_MS, recentFailures, checkLoginAllowed };
+export { WINDOW_MS, MAX_FAILURES, LOCK_MS, recentFailures, checkLoginAllowed };
