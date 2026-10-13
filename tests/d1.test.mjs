@@ -237,3 +237,33 @@ test('会话走真实 SQL', async (t) => {
     await assert.rejects(() => ctx.svc.requireUser(admin.token), /过期|失效/);
   });
 });
+
+test('编辑资源走真实 SQL', async (t) => {
+  await t.test('UPDATE 写进数据库，字段确实变了', async () => {
+    const ctx = setup();
+    const admin = await ctx.svc.register({ username: '管理员', password: 'harbor-lantern-77', bootstrapCode: 'OPEN-SESAME' });
+    const made = await uploadOne(ctx, admin, { title: '旧标题', category: 'doc' }, 32);
+
+    const updated = await ctx.svc.updateResource(admin.token, made.id, {
+      title: '新标题', category: 'software', visibility: 'members',
+    });
+    assert.equal(updated.title, '新标题');
+
+    const row = ctx.db.sqlite.prepare('SELECT title, category, visibility FROM resources WHERE id = ?').get(made.id);
+    assert.equal(row.title, '新标题');
+    assert.equal(row.category, 'software');
+    assert.equal(row.visibility, 'members');
+  });
+
+  await t.test('只改一个字段时，其它字段在 SQL 里没被动过', async () => {
+    const ctx = setup();
+    const admin = await ctx.svc.register({ username: '管理员', password: 'harbor-lantern-77', bootstrapCode: 'OPEN-SESAME' });
+    const made = await uploadOne(ctx, admin, { title: 'A', category: 'doc', visibility: 'public' }, 32);
+
+    await ctx.svc.updateResource(admin.token, made.id, { title: 'B' });
+    const row = ctx.db.sqlite.prepare('SELECT title, category, visibility FROM resources WHERE id = ?').get(made.id);
+    assert.equal(row.title, 'B');
+    assert.equal(row.category, 'doc');
+    assert.equal(row.visibility, 'public');
+  });
+});

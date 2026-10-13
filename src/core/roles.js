@@ -22,6 +22,8 @@ const RULES = {
     manageUsers: true,
     deleteOwnResource: true,
     deleteAnyResource: true,
+    editOwnResource: true,
+    editAnyResource: true,
     seeMembersOnly: true,
   },
   member: {
@@ -30,6 +32,8 @@ const RULES = {
     manageUsers: false,
     deleteOwnResource: true,
     deleteAnyResource: false,
+    editOwnResource: true,
+    editAnyResource: false,
     seeMembersOnly: true,
   },
   /* 游客只读：能看全部资源，不能上传，也不能删东西。 */
@@ -39,6 +43,8 @@ const RULES = {
     manageUsers: false,
     deleteOwnResource: false,
     deleteAnyResource: false,
+    editOwnResource: false,
+    editAnyResource: false,
     seeMembersOnly: true,
   },
   /* 没登录：只能看标成「所有人可见」的资源。 */
@@ -48,6 +54,8 @@ const RULES = {
     manageUsers: false,
     deleteOwnResource: false,
     deleteAnyResource: false,
+    editOwnResource: false,
+    editAnyResource: false,
     seeMembersOnly: false,
   },
 };
@@ -69,6 +77,14 @@ function canSee(role, resource) {
   return can(role, 'seeMembersOnly');
 }
 
+/* 能不能改。自己传的可以改，管理员可以改任何人的。 */
+function canEdit(role, user, resource) {
+  if (!user || !resource) return false;
+  if (can(role, 'editAnyResource')) return true;
+  if (!can(role, 'editOwnResource')) return false;
+  return resource.owner_id === user.id;
+}
+
 /* 能不能删。自己传的可以删，管理员可以删任何人的。 */
 function canDelete(role, user, resource) {
   if (!user || !resource) return false;
@@ -77,4 +93,4 @@ function canDelete(role, user, resource) {
   return resource.ownerId === user.id;
 }
 
-export { ROLES, ANONYMOUS, VISIBILITIES, RULES, isRole, can, canSee, canDelete };
+export { ROLES, ANONYMOUS, VISIBILITIES, RULES, isRole, can, canSee, canEdit, canDelete };

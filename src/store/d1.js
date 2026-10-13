@@ -4,6 +4,9 @@
    生产用这个；测试时用一个 SQLite 垫片跑同一份代码，
    所以这里的 SQL 不是拍脑袋写的，是真跑过的。 */
 
+/* 允许管理员修改的字段，和 memory.js 保持一致。 */
+const EDITABLE = ['title', 'description', 'category', 'platform', 'visibility'];
+
 const RESOURCE_COLUMNS = `
   r.id, r.owner_id, r.title, r.description, r.category, r.platform, r.visibility,
   r.r2_key, r.file_name, r.file_size, r.mime, r.downloads, r.created_at,
@@ -114,6 +117,16 @@ function createD1Store(db) {
             r.r2_key, r.file_name, r.file_size, r.mime, r.downloads || 0, r.created_at],
         );
       },
+      async update(id, fields) {
+        const sets = [];
+        const args = [];
+        for (const key of EDITABLE) {
+          if (fields[key] !== undefined) { sets.push(key + ' = ?'); args.push(fields[key]); }
+        }
+        if (!sets.length) return;
+        args.push(id);
+        await run('UPDATE resources SET ' + sets.join(', ') + ' WHERE id = ?', args);
+      },
       async remove(id) {
         await run('DELETE FROM resources WHERE id = ?', [id]);
       },
@@ -161,4 +174,4 @@ function createD1Store(db) {
   };
 }
 
-export { createD1Store, RESOURCE_COLUMNS };
+export { createD1Store, RESOURCE_COLUMNS, EDITABLE };

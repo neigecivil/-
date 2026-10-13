@@ -375,3 +375,95 @@ test('改密码', async (t) => {
     );
   });
 });
+
+/* ── 编辑资源 ───────────────────────────────────────────── */
+
+test('编辑资源', async (t) => {
+  async function withMembers() {
+    const ctx = setup({ bootstrapCode: 'OPEN-SESAME' });
+    const admin = await makeAdmin(ctx);
+    const invite = await ctx.svc.createInvite(admin.token, { role: 'member', maxUses: 5 });
+    const member = await ctx.svc.register({ username: '成员甲', password: 'harbor-lantern-77', inviteCode: invite.code });
+    return { ctx, admin, member };
+  }
+
+  await t.test('管理员能改任意资源的标题和分类——这就是"换位置"', async () => {
+    const { ctx, admin, member } = await withMembers();
+    const made = await uploadOne(ctx, member, { title: '旧标题', category: 'doc' }, 32);
+
+    const updated = await ctx.svc.updateResource(admin.token, made.id, { title: '新标题', category: 'software' });
+    assert.equal(updated.title, '新标题');
+    assert.equal(updated.category, 'software');
+    assert.equal(updated.categoryName, '软件');
+  });
+
+  await t.test('改完之后列表里就是新的分类了', async () => {
+    const { ctx, admin, member } = await withMembers();
+    const made = await uploadOne(ctx, member, { title: '待搬家', category: 'doc' }, 32);
+    await ctx.svc.updateResource(admin.token, made.id, { category: 'design' });
+
+    const byDesign = await ctx.svc.listResources(admin.token, new URLSearchParams({ category: 'design' }));
+    assert.equal(byDesign.total, 1);
+    assert.equal(byDesign.resources[0].title, '待搬家');
+
+    const byDoc = await ctx.svc.listResources(admin.token, new URLSearchParams({ category: 'doc' }));
+    assert.equal(byDoc.total, 0, '旧的分类里不该还有它');
+  });
+
+  await t.test('只传一个字段时，其余保持原样', async () => {
+    const { ctx, admin, member } = await withMembers();
+    const made = await uploadOne(ctx, member, {
+      title: '原标题', description: '原简介', category: 'doc', visibility: 'members',
+    }, 32);
+
+    const updated = await ctx.svc.updateResource(admin.token, made.id, { title: '改了标题' });
+    assert.equal(updated.title, '改了标题');
+    assert.equal(updated.description, '原简介');
+    assert.equal(updated.category, 'doc');
+    assert.equal(updated.visibility, 'members');
+  });
+
+  await t.test('成员能改自己的', async () => {
+    const { ctx, member } = await withMembers();
+    const made = await uploadOne(ctx, member, { title: '我的文件', category: 'doc' }, 32);
+    const updated = await ctx.svc.updateResource(member.token, made.id, { title: '我改的' });
+    assert.equal(updated.title, '我改的');
+  });
+
+  await t.test('成员改不了别人的', async () => {
+    const { ctx, admin, member } = await withMembers();
+    const made = await uploadOne(ctx, admin, { title: '管理员的文件', category: 'doc' }, 32);
+    await assert.rejects(() => ctx.svc.updateResource(member.token, made.id, { title: '偷改' }), /改不了/);
+  });
+
+  await t.test('游客改不了任何东西', async () => {
+    const ctx = setup({ bootstrapCode: 'OPEN-SESAME' });
+    const admin = await makeAdmin(ctx);
+    const invite = await ctx.svc.createInvite(admin.token, { role: 'guest', maxUses: 5 });
+    const guest = await ctx.svc.register({ username: '游客甲', password: 'harbor-lantern-77', inviteCode: invite.code });
+    const made = await uploadOne(ctx, admin, { title: '文件', category: 'doc' }, 32);
+    await assert.rejects(() => ctx.svc.updateResource(guest.token, made.id, { title: '改一下' }), /改不了/);
+  });
+
+  await t.test('没登录更不能改', async () => {
+    const { ctx, admin } = await withMembers();
+    const made = await uploadOne(ctx, admin, { title: '文件', category: 'doc' }, 32);
+    await assert.rejects(() => ctx.svc.updateResource(null, made.id, { title: '改' }), /登录/);
+  });
+
+  await t.test('认不出的分类回落到「其他」', async () => {
+    const { ctx, admin, member } = await withMembers();
+    const made = await uploadOne(ctx, member, { title: '文件', category: 'doc' }, 32);
+    const updated = await ctx.svc.updateResource(admin.token, made.id, { category: '不存在的分类' });
+    assert.equal(updated.category, 'other');
+  });
+
+  await t.test('改完之后下载次数不会被抹掉', async () => {
+    const { ctx, admin, member } = await withMembers();
+    const made = await uploadOne(ctx, member, { title: '文件', category: 'doc', visibility: 'public' }, 32);
+    await ctx.svc.download(null, made.id);
+    await ctx.svc.updateResource(admin.token, made.id, { title: '改个名' });
+    const list = await ctx.svc.listResources(admin.token, new URLSearchParams());
+    assert.equal(list.resources[0].downloads, 1);
+  });
+});

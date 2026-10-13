@@ -8,7 +8,7 @@ import crypto from 'node:crypto';
 import { AppError, badRequest, unauthorized, forbidden, notFound, conflict } from './errors.js';
 import { checkPassword } from './password.js';
 import { checkInvite, normalizeCode, generateCode } from './invite.js';
-import { can, canSee, canDelete } from './roles.js';
+import { can, canSee, canEdit, canDelete } from './roles.js';
 import { checkLoginAllowed, WINDOW_MS } from './loginGuard.js';
 import * as uploads from './uploads.js';
 import * as catalog from './resources.js';
@@ -308,6 +308,28 @@ function createService(options) {
     return { ok: true };
   }
 
+  /* 改资源的元信息。管理员能改任何人的，成员只能改自己的。 */
+  async function updateResource(sessionToken, id, patch) {
+    const user = await requireUser(sessionToken);
+    const resource = await store.resources.byId(id);
+    if (!resource) throw notFound('这份资源已经不在了');
+    if (!canEdit(user.role, user, resource)) throw forbidden('这份资源你改不了');
+
+    /* 没传的字段沿用原值，传了的按新规矩校验一遍。 */
+    const merged = {
+      title: patch.title !== undefined ? patch.title : resource.title,
+      description: patch.description !== undefined ? patch.description : resource.description,
+      category: patch.category !== undefined ? patch.category : resource.category,
+      platform: patch.platform !== undefined ? patch.platform : resource.platform,
+      visibility: patch.visibility !== undefined ? patch.visibility : resource.visibility,
+    };
+    const meta = catalog.validateMeta(merged);
+
+    await store.resources.update(id, meta);
+    const fresh = await store.resources.byId(id);
+    return catalog.present(fresh, user);
+  }
+
   async function deleteResource(sessionToken, id) {
     const user = await requireUser(sessionToken);
     const resource = await store.resources.byId(id);
@@ -335,7 +357,7 @@ function createService(options) {
     register, login, logout, changePassword,
     createInvite, listInvites, listUsers,
     listResources, startUpload, uploadPart, completeUpload, abortUpload,
-    deleteResource, download,
+    updateResource, deleteResource, download,
     requireUser, optionalUser, publicUser,
   };
 }

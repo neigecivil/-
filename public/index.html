@@ -366,7 +366,7 @@
 
   .invite-list { margin: 0; padding: 0; list-style: none; max-height: 260px; overflow-y: auto; }
   .invite-list li {
-    display: flex; align-items: center; gap: 10px;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
     padding: 9px 0; border-bottom: 1px solid var(--line-2); font-size: 13px;
   }
   .invite-list li:last-child { border-bottom: 0; }
@@ -551,15 +551,21 @@
   </div>
 
   <div class="mask" id="adminMask">
-    <div class="modal" style="width:min(560px,100%)" role="dialog" aria-modal="true" aria-labelledby="adminTitle">
+    <div class="modal" style="width:min(700px,100%)" role="dialog" aria-modal="true" aria-labelledby="adminTitle">
       <div class="modal-head">
         <div>
-          <h2 id="adminTitle">邀请码</h2>
-          <p>别人要注册，得先拿到一个码</p>
+          <h2 id="adminTitle">管理</h2>
+          <p>邀请码和资源都在这儿</p>
         </div>
         <button class="x" id="adminClose" type="button" aria-label="关闭">✕</button>
       </div>
       <div class="modal-body">
+        <div class="tabs" id="adminTabs">
+          <button type="button" data-atab="invites" class="on">邀请码</button>
+          <button type="button" data-atab="resources">资源管理</button>
+        </div>
+
+        <div id="adminInvites">
         <div class="row2">
           <div class="f">
             <label for="invRole">给什么角色</label>
@@ -591,10 +597,58 @@
           <label>已经发出去的</label>
           <ul class="invite-list" id="inviteList"></ul>
         </div>
+        </div>
+
+        <div id="adminResources" class="field-hidden">
+          <p class="hint" style="margin-bottom:12px">每一条都能看到是谁传的。点「编辑」可以改标题、换分类、调可见范围。</p>
+          <ul class="invite-list" id="resourceList"></ul>
+        </div>
       </div>
       <div class="modal-foot">
         <button type="button" class="btn" id="adminDone">关闭</button>
       </div>
+    </div>
+  </div>
+
+  <div class="mask" id="editMask">
+    <div class="modal" style="width:min(480px,100%)" role="dialog" aria-modal="true" aria-labelledby="editTitle">
+      <div class="modal-head">
+        <div>
+          <h2 id="editTitle">编辑资源</h2>
+          <p id="editWho"></p>
+        </div>
+        <button class="x" id="editClose" type="button" aria-label="关闭">✕</button>
+      </div>
+      <form id="editForm">
+        <div class="modal-body">
+          <div class="f">
+            <label for="eTitle">标题</label>
+            <input id="eTitle" maxlength="60" required />
+          </div>
+          <div class="row2">
+            <div class="f">
+              <label for="eCat">分类 <i>换这个就是"换位置"</i></label>
+              <select id="eCat"></select>
+            </div>
+            <div class="f field-hidden" id="ePlatformField">
+              <label for="ePlatform">运行平台</label>
+              <select id="ePlatform"></select>
+            </div>
+          </div>
+          <div class="f">
+            <label>谁能下载</label>
+            <div class="seg" id="editVisibilitySeg"></div>
+          </div>
+          <div class="f">
+            <label for="eDesc">简介</label>
+            <textarea id="eDesc" maxlength="200"></textarea>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn" id="editCancel">取消</button>
+          <button type="submit" class="btn btn-solid" id="editSubmit">保存</button>
+        </div>
+      </form>
     </div>
   </div>
 
@@ -627,6 +681,10 @@
     authMode: 'login',
     pendingUpload: false,
     seq: 0,
+    adminTab: 'invites',
+    adminResources: [],
+    editingId: null,
+    editVisibility: 'public',
   };
 
   /* ── 基础工具 ───────────────────────────────────────────── */
@@ -1166,9 +1224,109 @@
     }
   }
 
+  function switchAdminTab(tab) {
+    state.adminTab = tab;
+    var buttons = document.querySelectorAll('#adminTabs button');
+    for (var i = 0; i < buttons.length; i++) {
+      buttons[i].classList.toggle('on', buttons[i].dataset.atab === tab);
+    }
+    $('adminInvites').classList.toggle('field-hidden', tab !== 'invites');
+    $('adminResources').classList.toggle('field-hidden', tab !== 'resources');
+    if (tab === 'resources') loadAdminResources();
+  }
+
+  /* 资源管理列表：每条都带上传者，方便追来源。 */
+  function resourceRowHTML(r) {
+    var locked = r.visibility === 'members';
+    return '<li>'
+      + '<span class="code">' + esc(r.title) + '</span>'
+      + '<span class="vis">' + esc(r.owner) + '</span>'
+      + '<span class="vis">' + esc(r.categoryName) + '</span>'
+      + '<span class="vis' + (locked ? ' locked' : '') + '">' + esc(r.visibilityName) + '</span>'
+      + '<span class="meta">' + esc(r.fileSize) + ' · 下载 ' + r.downloads + ' 次 · ' + timeAgo(r.createdAt) + '</span>'
+      + '<button class="btn btn-sm" type="button" data-edit="' + r.id + '">编辑</button>'
+      + '</li>';
+  }
+
+  async function loadAdminResources() {
+    try {
+      var data = await api('/api/resources');
+      state.adminResources = data.resources;
+      $('resourceList').innerHTML = data.resources.length
+        ? data.resources.map(resourceRowHTML).join('')
+        : '<li><span class="meta" style="margin-left:0">还没有任何资源</span></li>';
+    } catch (err) {
+      toast(err.message);
+    }
+  }
+
+  function renderEditVisibility() {
+    $('editVisibilitySeg').innerHTML = state.visibilities.map(function (v) {
+      return '<button type="button" class="' + (state.editVisibility === v.id ? 'on' : '') + '" data-evis="' + v.id + '">'
+        + esc(v.name) + '</button>';
+    }).join('');
+  }
+
+  function syncEditPlatform() {
+    $('ePlatformField').classList.toggle('field-hidden', $('eCat').value !== 'software');
+  }
+
+  function openEdit(id) {
+    var target = null;
+    for (var i = 0; i < state.adminResources.length; i++) {
+      if (state.adminResources[i].id === id) { target = state.adminResources[i]; break; }
+    }
+    if (!target) return;
+
+    state.editingId = id;
+    state.editVisibility = target.visibility || 'public';
+    $('editWho').textContent = '上传者：' + target.owner + ' · ' + target.fileSize;
+    $('eTitle').value = target.title;
+    $('eDesc').value = target.description || '';
+
+    $('eCat').innerHTML = state.categories.map(function (c) {
+      return '<option value="' + c.id + '"' + (c.id === target.category ? ' selected' : '') + '>' + esc(c.name) + '</option>';
+    }).join('');
+    $('ePlatform').innerHTML = '<option value="">不指定</option>' + state.platforms.map(function (pl) {
+      return '<option value="' + pl.id + '"' + (pl.id === target.platform ? ' selected' : '') + '>' + esc(pl.name) + '</option>';
+    }).join('');
+
+    syncEditPlatform();
+    renderEditVisibility();
+    openModal($('editMask'));
+  }
+
+  function saveEdit(e) {
+    e.preventDefault();
+    if (!state.editingId) return;
+    var button = $('editSubmit');
+    button.disabled = true;
+    api('/api/resources/' + state.editingId, {
+      method: 'PATCH',
+      body: {
+        title: $('eTitle').value.trim(),
+        description: $('eDesc').value.trim(),
+        category: $('eCat').value,
+        platform: $('eCat').value === 'software' ? $('ePlatform').value : '',
+        visibility: state.editVisibility,
+      },
+    }).then(function () {
+      toast('改好了');
+      closeModal($('editMask'));
+      loadAdminResources();
+      loadCounts();
+      loadList();
+    }).catch(function (err) {
+      toast(err.message);
+    }).then(function () {
+      button.disabled = false;
+    });
+  }
+
   function openAdmin() {
     $('invResult').hidden = true;
     openModal($('adminMask'));
+    switchAdminTab(state.adminTab);
     loadInvites();
   }
 
@@ -1306,6 +1464,25 @@
   $('authForm').addEventListener('submit', doAuth);
   $('authClose').addEventListener('click', function () { closeModal($('authMask')); });
   
+  $('adminTabs').addEventListener('click', function (e) {
+    var button = e.target.closest('button[data-atab]');
+    if (button) switchAdminTab(button.dataset.atab);
+  });
+  $('resourceList').addEventListener('click', function (e) {
+    var button = e.target.closest('[data-edit]');
+    if (button) openEdit(button.dataset.edit);
+  });
+  $('editVisibilitySeg').addEventListener('click', function (e) {
+    var button = e.target.closest('button[data-evis]');
+    if (!button) return;
+    state.editVisibility = button.dataset.evis;
+    renderEditVisibility();
+  });
+  $('eCat').addEventListener('change', syncEditPlatform);
+  $('editForm').addEventListener('submit', saveEdit);
+  $('editClose').addEventListener('click', function () { closeModal($('editMask')); });
+  $('editCancel').addEventListener('click', function () { closeModal($('editMask')); });
+
   $('invCreate').addEventListener('click', createInvite);
   $('invCopy').addEventListener('click', function () {
     var text = $('invCode').textContent;

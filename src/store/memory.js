@@ -7,6 +7,9 @@ function clone(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
 }
 
+/* 允许管理员修改的字段。加字段时改这里，D1 那边也一样。 */
+const EDITABLE = ['title', 'description', 'category', 'platform', 'visibility'];
+
 function createMemoryStore() {
   const users = [];
   const invites = [];
@@ -64,6 +67,13 @@ function createMemoryStore() {
       },
       async byId(id) { return clone(resources.find((r) => r.id === id) || null); },
       async insert(resource) { resources.push(clone(resource)); },
+      async update(id, fields) {
+        const r = resources.find((x) => x.id === id);
+        if (!r) return;
+        for (const key of EDITABLE) {
+          if (fields[key] !== undefined) r[key] = fields[key];
+        }
+      },
       async remove(id) {
         const i = resources.findIndex((r) => r.id === id);
         if (i >= 0) resources.splice(i, 1);

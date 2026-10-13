@@ -118,6 +118,12 @@ async function handleApi(request, env, url) {
     return json({ ok: true, total: result.total, resources: result.resources });
   }
 
+  if (section === 'resources' && id && method === 'PATCH') {
+    const body = await readJsonBody(request);
+    const resource = await service.updateResource(token, id, body);
+    return json({ ok: true, resource });
+  }
+
   if (section === 'resources' && id && method === 'DELETE') {
     await service.deleteResource(token, id);
     return json({ ok: true });
