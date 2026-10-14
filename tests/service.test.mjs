@@ -573,12 +573,19 @@ test('用量保护', async (t) => {
     assert.equal(got.resource.title, '公开文件');
   });
 
-  await t.test('用量报表只有管理员能看', async () => {
+  await t.test('用量报表谁都看得到，成员和没登录的都能看', async () => {
     const ctx = setup(TIGHT);
     const admin = await makeAdmin(ctx);
     const invite = await ctx.svc.createInvite(admin.token, { role: 'member', maxUses: 5 });
     const member = await ctx.svc.register({ username: '成员甲', password: 'harbor-lantern-77', inviteCode: invite.code });
-    await assert.rejects(() => ctx.svc.usageReport(member.token), /管理员/);
+    await uploadOne(ctx, admin, { title: '占了七百', category: 'doc' }, 700);
+
+    const asMember = await ctx.svc.usageReport(member.token);
+    const asGuest = await ctx.svc.usageReport();
+    assert.equal(asMember.level, 'warn');
+    assert.equal(asGuest.level, 'warn');
+    assert.equal(asGuest.usedBytes, 700);
+    assert.equal(asGuest.limitText, '1000 B');
   });
 
   await t.test('删掉文件腾出空间后，又能传了', async () => {

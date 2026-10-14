@@ -504,3 +504,20 @@ test('图片预览', async (t) => {
     assert.equal(view.status, 403);
   });
 });
+test('整站用量提醒', async (t) => {
+  await t.test('没登录也能拿到，页面顶上那条提醒要用', async () => {
+    const { env } = setup();
+    const r = await call(env, '/api/usage');
+    assert.equal(r.status, 200);
+    assert.equal(r.data.usage.usedBytes, 0);
+    assert.equal(r.data.usage.level, 'ok');
+  });
+
+  await t.test('管理员那条老路还在，管理面板没受影响', async () => {
+    const { env } = setup();
+    const { cookie } = await registerAdmin(env);
+    const r = await call(env, '/api/admin/usage', { cookie });
+    assert.equal(r.status, 200);
+    assert.equal(typeof r.data.usage.capText, 'string');
+  });
+});

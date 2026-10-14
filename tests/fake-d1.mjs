@@ -7,8 +7,9 @@ export const MIGRATION = readFileSync(new URL('../migrations/0001_init.sql', imp
 
 /* D1 和 SQLite 是同一套 SQL 方言，所以本机就能把 D1 适配器的 SQL 真跑一遍。
    生产换成真的 D1，代码一行都不用改。 */
-export function makeD1Shim() {
-  const sqlite = new DatabaseSync(':memory:');
+export function makeD1Shim(file) {
+  /* 不传就是内存库（测试用）；传了文件路径就落到磁盘上，本地预览用这个。 */
+  const sqlite = new DatabaseSync(file || ':memory:');
   const clean = (v) => {
     if (v === undefined) return null;
     if (typeof v === 'boolean') return v ? 1 : 0;
@@ -33,8 +34,8 @@ export function makeD1Shim() {
   };
 }
 
-export function makeMigratedDb() {
-  const db = makeD1Shim();
+export function makeMigratedDb(file) {
+  const db = makeD1Shim(file);
   db.exec(MIGRATION);
   return db;
 }

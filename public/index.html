@@ -1400,12 +1400,11 @@
     }
   }
 
-  /* 拉一次用量。只有管理员能看，其它人请求会被拒，忽略即可。 */
+  /* 拉一次整站用量。这条提醒所有人都看，不只是管理员。 */
   async function loadUsage() {
     var box = $('usageBanner');
-    if (!isAdmin()) { box.hidden = true; return; }
     try {
-      var data = await api('/api/admin/usage');
+      var data = await api('/api/usage');
       state.usage = data.usage;
       var u = data.usage;
       if (u.level === 'ok') { box.hidden = true; return; }

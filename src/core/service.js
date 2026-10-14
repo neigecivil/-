@@ -426,10 +426,9 @@ function createService(options) {
     return catalog.present(fresh, user);
   }
 
-  /* 用量报表，给管理面板显示，也用来决定要不要横幅警告。 */
-  async function usageReport(sessionToken) {
-    const user = await requireUser(sessionToken);
-    if (!can(user.role, 'manageUsers')) throw forbidden('只有管理员能看用量');
+  /* 用量报表。这条提醒要给所有人看（包括没登录的），
+     所以不卡角色；管理面板里的详细那行也用它。 */
+  async function usageReport() {
     const usage = await currentUsage();
     return {
       ...usage,

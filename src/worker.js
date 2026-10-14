@@ -107,6 +107,11 @@ async function handleApi(request, env, url) {
     const quota = await service.quotaReport(token);
     return json({ ok: true, quota });
   }
+  /* 整站用了多少存储。所有人（含没登录的）都能看，页面顶上那条提醒靠它。 */
+  if (section === 'usage' && method === 'GET') {
+    const usage = await service.usageReport();
+    return json({ ok: true, usage });
+  }
 
   if (section === 'register' && method === 'POST') {
     const body = await readJsonBody(request);

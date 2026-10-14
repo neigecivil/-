@@ -56,7 +56,22 @@ node tools/dev.mjs
 
 然后打开 <http://127.0.0.1:4330>。第一次注册时，邀请码填 `LOCAL-DEV-CODE`。
 
-数据库用的是本机 SQLite、文件存在内存里，**关掉就清空**，随便折腾。
+账号和文件都留在项目里的 `.devdata/`，**重启不用重新注册**，登录状态也还在。
+想清空重来：
+
+```
+set RESHUB_DEV_RESET=1 && node tools/dev.mjs
+```
+
+清掉之后重新注册一次就行（还是那个邀请码）。`.devdata/` 已经在 `.gitignore` 里，不会被提交。
+想在本地看"存储快满了"那条提醒，把额度调小再启动：
+
+```
+set STORAGE_LIMIT_MB=1 && set STORAGE_WARN_PERCENT=1 && node tools/dev.mjs
+```
+
+（`USER_QUOTA_MB`、`STORAGE_RESERVE_MB`、`GUARD_BLOCK_DOWNLOADS` 同样可以直接这样传。）
+
 这条路和线上唯一的差别是 Cookie 去掉了 Secure 标记（本地是 http）。
 
 ## 部署步骤
@@ -141,7 +156,7 @@ Workers KV 属于免费计划，不需要支付方式。
 Cloudflare 的免费额度是 R2 每月 10GB 存储。填满之后按 $0.015/GB 收费。
 为了避免在不知情的情况下产生账单，代码里做了保护：
 
-- **用到 80%** —— 管理员登录后，页面上方出现提醒条
+- **用到 80%** —— 所有人（含没登录的）都会在页面上方看到提醒条
 - **顶到上限（10GB − 200MB 预留）** —— 自动停止上传，提示用户空间已满
 - **同时**（默认）也停止对外下载。管理员不受限，方便取回文件、清理空间
 - 删掉一些资源腾出空间后，自动恢复

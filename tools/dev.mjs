@@ -10,16 +10,29 @@
 
 import http from 'node:http';
 import fs from 'node:fs/promises';
+import fsSync from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import worker from '../src/worker.js';
 import { makeMigratedDb } from '../tests/fake-d1.mjs';
-import { makeFakeR2 } from '../tests/fake-r2.mjs';
+import { createDiskFiles } from './dev-disk.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PUBLIC_DIR = path.join(ROOT, 'public');
 const PORT = Number(process.env.PORT) || 4330;
+
+/* 数据和文件都落在 .devdata/ 里，重启本地预览不用重新注册。
+   想清空重来：先设 RESHUB_DEV_RESET=1 再启动一次。 */
+const DATA_DIR = path.join(ROOT, '.devdata');
+const DB_FILE = path.join(DATA_DIR, 'dev.sqlite');
+const FILES_DIR = path.join(DATA_DIR, 'files');
+
+if (String(process.env.RESHUB_DEV_RESET || '') === '1') {
+  fsSync.rmSync(DATA_DIR, { recursive: true, force: true });
+  console.log('  已按 RESHUB_DEV_RESET 清空本地数据。');
+}
+fsSync.mkdirSync(FILES_DIR, { recursive: true });
 
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',
@@ -28,11 +41,18 @@ const MIME = {
 };
 
 const env = {
-  DB: makeMigratedDb(),
-  FILES: makeFakeR2(),
+  DB: makeMigratedDb(DB_FILE),
+  FILES: createDiskFiles(FILES_DIR),
   FILE_BACKEND: 'r2',
   BOOTSTRAP_CODE: process.env.BOOTSTRAP_CODE || 'LOCAL-DEV-CODE',
 };
+
+/* 想在本地看"存储快满了"那条提醒，把额度调小就行，例如：
+   set STORAGE_LIMIT_MB=1 && set STORAGE_WARN_PERCENT=1 && node tools/dev.mjs */
+const TUNING = ['STORAGE_LIMIT_MB', 'STORAGE_RESERVE_MB', 'STORAGE_WARN_PERCENT', 'GUARD_BLOCK_DOWNLOADS', 'USER_QUOTA_MB'];
+for (const name of TUNING) {
+  if (process.env[name] !== undefined) env[name] = process.env[name];
+}
 
 async function readBody(req) {
   const chunks = [];
@@ -91,6 +111,7 @@ server.listen(PORT, '127.0.0.1', () => {
   console.log('');
   console.log('  本地预览已启动 →  http://127.0.0.1:' + PORT);
   console.log('  注册第一个管理员时，邀请码填：' + env.BOOTSTRAP_CODE);
-  console.log('  数据只存在内存里，关掉就清空。');
+  console.log('  账号和文件都留在 .devdata/ 里，重启不用重新注册。');
+  console.log('  想清空重来：设 RESHUB_DEV_RESET=1 再启动一次。');
   console.log('');
 });
