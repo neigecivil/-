@@ -407,34 +407,24 @@
   body > header, body > main, body > footer { position: relative; z-index: 1; }
 
   .bg-decor > span {
-    position: absolute; line-height: 1;
+    position: absolute; left: 0; top: 0; line-height: 1;
     font-family: var(--serif); font-weight: 700; letter-spacing: .06em;
     white-space: nowrap; color: var(--accent);
     opacity: 0; will-change: transform, opacity;
-    animation: drift var(--life, 18s) cubic-bezier(.37, .01, .3, 1) forwards;
+    transform-origin: center center;
   }
-  /* 里面再套一层负责慢慢呼吸。两个动画分开放，免得抢同一个 transform。 */
+  /* 里面这层自己轻轻上下晃，跟外层的位置计算不打架。 */
   .bg-decor > span > i {
     display: inline-block; font-style: normal;
-    animation: breathe var(--breathe, 7s) ease-in-out infinite;
+    animation: bobble var(--bobble, 6s) ease-in-out infinite;
   }
   /* 三种质地：实心、空心描边、虚化。 */
   .bg-decor > span.hollow { color: transparent; -webkit-text-stroke: 1.3px var(--accent); }
   .bg-decor > span.soft { filter: blur(1.6px); }
-  .bg-decor > span.calm,
-  .bg-decor > span.calm > i { animation: none; }
-
-  @keyframes drift {
-    0%   { opacity: 0;  transform: translate3d(0, var(--rise, 40px), 0) rotate(var(--tilt, 0deg)) scale(var(--s0, .88)); }
-    14%  { opacity: var(--peak, .14); }
-    62%  { opacity: var(--peak, .14); }
-    100% { opacity: 0;  transform: translate3d(var(--dx, 30px), var(--dy, -80px), 0) rotate(var(--tilt2, 5deg)) scale(var(--s1, 1.08)); }
+  @keyframes bobble {
+    0%, 100% { transform: translateY(-2px); }
+    50%      { transform: translateY(3px); }
   }
-  @keyframes breathe {
-    0%, 100% { transform: translateY(0); }
-    50%      { transform: translateY(var(--bob, -12px)); }
-  }
-
   /* ═══ 点击反馈：按钮缩一下，落点炸开一圈 ═════════════ */
   .btn, .dl, .drawer, .sub, .scope button, .seg button, .foot-link, .x, .rm, .drop, .tabs button {
     transition: transform .12s ease, box-shadow .16s ease, border-color .15s ease,
@@ -482,7 +472,29 @@
     max-width: 100%; max-height: 62vh; border-radius: var(--radius-sm);
     border: 1px solid var(--line); background: var(--surface-2);
   }
-  .acts .btn-sm { height: 32px; }</style>
+  .acts .btn-sm { height: 32px; }
+
+  /* ═══ 明暗切换：优先用浏览器自带的圆形揭示，不支持就整体淡变 ═══ */
+  ::view-transition-old(root),
+  ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+  ::view-transition-old(root) { z-index: 1; }
+  ::view-transition-new(root) {
+    z-index: 2;
+    animation: themeWipe .55s ease-in-out;
+  }
+  @keyframes themeWipe {
+    from { clip-path: circle(0px at var(--tx, 50%) var(--ty, 50%)); }
+    to   { clip-path: circle(var(--tr, 140vmax) at var(--tx, 50%) var(--ty, 50%)); }
+  }
+
+  /* 兜底：浏览器不支持上面那套时，这些面慢慢换色，而不是啪地一下。 */
+  html.theme-anim, html.theme-anim body, html.theme-anim header, html.theme-anim main, html.theme-anim footer,
+  html.theme-anim .list, html.theme-anim .row, html.theme-anim .btn, html.theme-anim .search,
+  html.theme-anim input, html.theme-anim select, html.theme-anim textarea, html.theme-anim .modal,
+  html.theme-anim .drawer, html.theme-anim .toast, html.theme-anim .bg-decor > span {
+    transition: background-color .45s ease, color .45s ease, border-color .45s ease, box-shadow .45s ease;
+  }
+</style>
 </head>
 <body>
   <div class="bg-decor" id="bgDecor" aria-hidden="true"></div>
@@ -936,8 +948,47 @@
     btn.setAttribute('aria-label', label);
     btn.setAttribute('title', label);
   }
-  $('themeBtn').addEventListener('click', function () {
-    applyTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+  /* 从按钮那个点开始画一圈，把新配色铺满整页。
+     浏览器不支持 View Transitions 时退回"整页慢慢换色"。 */
+  function switchTheme(next, x, y) {
+    var root = document.documentElement;
+
+    if (reduceMotion || !document.startViewTransition) {
+      root.classList.add('theme-anim');
+      applyTheme(next);
+      setTimeout(function () { root.classList.remove('theme-anim'); }, 520);
+      return;
+    }
+
+    var w = window.innerWidth;
+    var h = window.innerHeight;
+    var far = Math.max(
+      Math.sqrt(Math.pow(x, 2) + Math.pow(y, 2)),
+      Math.sqrt(Math.pow(w - x, 2) + Math.pow(h - y, 2)),
+    );
+    root.style.setProperty('--tx', x.toFixed(0) + 'px');
+    root.style.setProperty('--ty', y.toFixed(0) + 'px');
+    root.style.setProperty('--tr', far.toFixed(0) + 'px');
+
+    var done = function () {
+      root.style.removeProperty('--tx');
+      root.style.removeProperty('--ty');
+      root.style.removeProperty('--tr');
+    };
+    try {
+      var vt = document.startViewTransition(function () { applyTheme(next); });
+      if (vt && vt.finished) vt.finished.then(done, done);
+      else done();
+    } catch (e) {
+      done();
+      applyTheme(next);
+    }
+  }
+
+  $('themeBtn').addEventListener('click', function (e) {
+    var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    var box = e.currentTarget.getBoundingClientRect();
+    switchTheme(next, box.left + box.width / 2, box.top + box.height / 2);
   });
 
   /* ── 背景字母与点击反馈 ─────────────────────────────────── */
@@ -951,63 +1002,185 @@
     setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, ms);
   }
 
-  /* 撒 1~3 个字母出去。每个的走向、大小、倾斜、质地、呼吸节奏都不一样，
-     待够时间自己收场，不在 DOM 里越堆越多。
-     系统里关掉了动画（prefers-reduced-motion）时照旧出现，只是不飘不动。 */
-  function sprinkleLetters() {
+  /* 每个字母记着自己的位置、速度、倾角，逐帧算下一步。
+     走法 = 游荡 + 互相推开 + 躲鼠标，所以路线不会重复，也不会挤成一团。 */
+  var letters = [];
+  var pointer = { x: -9999, y: -9999 };
+  var lastFrame = 0;
+
+  function letterBox(letter) {
+    return {
+      l: letter.x - letter.w / 2, r: letter.x + letter.w / 2,
+      t: letter.y - letter.h / 2, b: letter.y + letter.h / 2,
+    };
+  }
+
+  function hits(a, b, pad) {
+    return a.l - pad < b.r && a.r + pad > b.l && a.t - pad < b.b && a.b + pad > b.t;
+  }
+
+  /* 找一个不压到别人的位置：随机试 60 次，都挤不下这一批就先不放。 */
+  function freeSpot(w, h, pad) {
+    var vw = window.innerWidth;
+    var vh = window.innerHeight;
+    for (var i = 0; i < 60; i++) {
+      var x = rand(w / 2 + 8, Math.max(w / 2 + 9, vw - w / 2 - 8));
+      var y = rand(h / 2 + 8, Math.max(h / 2 + 9, vh - h / 2 - 8));
+      var spot = {
+        l: x - w / 2, r: x + w / 2, t: y - h / 2, b: y + h / 2,
+      };
+      var clash = false;
+      for (var j = 0; j < letters.length; j++) {
+        if (hits(spot, letterBox(letters[j]), pad)) { clash = true; break; }
+      }
+      if (!clash) return { x: x, y: y };
+    }
+    return null;
+  }
+
+  function removeLetter(letter) {
+    var i = letters.indexOf(letter);
+    if (i >= 0) letters.splice(i, 1);
+    if (letter.el.parentNode) letter.el.parentNode.removeChild(letter.el);
+  }
+
+  function addLetter() {
     var layer = $('bgDecor');
     if (!layer || document.hidden) return;
 
-    var count = Math.random() < 0.4 ? 1 : (Math.random() < 0.72 ? 2 : 3);
-    for (var i = 0; i < count; i++) {
-      var outer = document.createElement('span');
-      var inner = document.createElement('i');
-      var peak = rand(0.1, 0.23).toFixed(3);
+    var vw = window.innerWidth;
+    var vh = window.innerHeight;
+    var room = vw < 640 ? 4 : 8;
+    if (letters.length >= room) return;
 
-      inner.textContent = pick(BG_LETTERS);
-      outer.appendChild(inner);
-      outer.style.fontSize = rand(54, 186).toFixed(0) + 'px';
-      outer.style.left = rand(0, 86).toFixed(1) + '%';
-      outer.style.top = rand(2, 82).toFixed(1) + '%';
+    var text = pick(BG_LETTERS);
+    var size = Math.round(rand(56, 150) * (vw < 640 ? 0.7 : 1) * (vh < 700 ? 0.85 : 1));
+    var w = text.length * size * 0.76;
+    var h = size * 1.2;
+    var spot = freeSpot(w, h, Math.max(20, size * 0.18));
+    if (!spot) return;
 
-      /* 每个字母走自己那条线：起落方向、转动幅度、呼吸幅度都单独给。 */
-      outer.style.setProperty('--peak', peak);
-      outer.style.setProperty('--tilt', rand(-12, 12).toFixed(1) + 'deg');
-      outer.style.setProperty('--tilt2', rand(-16, 16).toFixed(1) + 'deg');
-      outer.style.setProperty('--dx', rand(-120, 120).toFixed(0) + 'px');
-      outer.style.setProperty('--dy', rand(-150, -50).toFixed(0) + 'px');
-      outer.style.setProperty('--rise', rand(24, 80).toFixed(0) + 'px');
-      outer.style.setProperty('--s0', rand(0.8, 1).toFixed(2));
-      outer.style.setProperty('--s1', rand(1.02, 1.18).toFixed(2));
-      outer.style.setProperty('--bob', rand(-20, -6).toFixed(0) + 'px');
-      outer.style.setProperty('--breathe', rand(5, 11).toFixed(1) + 's');
+    var outer = document.createElement('span');
+    var inner = document.createElement('i');
+    inner.textContent = text;
+    outer.appendChild(inner);
+    outer.style.fontSize = size + 'px';
+    outer.style.setProperty('--bobble', rand(4.5, 9).toFixed(1) + 's');
+    var dice = Math.random();
+    if (dice < 0.16) outer.className = 'hollow';
+    else if (dice < 0.32) outer.className = 'soft';
+    layer.appendChild(outer);
 
-      var dice = Math.random();
-      if (dice < 0.16) outer.className = 'hollow';
-      else if (dice < 0.32) outer.className = 'soft';
+    var letter = {
+      el: outer, w: w, h: h,
+      x: spot.x, y: spot.y,
+      vx: rand(-16, 16), vy: rand(-12, 6),
+      rot: rand(-12, 12), vrot: rand(-7, 7),
+      baseScale: rand(0.92, 1.06), scale: 1,
+      phase: rand(0, Math.PI * 2), pulse: rand(0.3, 0.85),
+      peak: rand(0.1, 0.22), life: rand(16000, 30000), age: 0,
+    };
+    letters.push(letter);
 
-      layer.appendChild(outer);
+    if (reduceMotion) {
+      /* 系统里关了动画：出现、待一会儿、收走，位置照样错开。 */
+      outer.style.opacity = letter.peak;
+      outer.style.transform = 'translate3d(' + (letter.x - w / 2).toFixed(1) + 'px,'
+        + (letter.y - h / 2).toFixed(1) + 'px,0) rotate(' + letter.rot.toFixed(1) + 'deg)';
+      setTimeout(function () { removeLetter(letter); }, letter.life);
+    }
+  }
 
-      if (reduceMotion) {
-        outer.className += ' calm';
-        outer.style.opacity = peak;
-        dropLater(outer, rand(7000, 12000));
-      } else {
-        outer.style.setProperty('--life', rand(16, 30).toFixed(1) + 's');
-        outer.style.animationDelay = rand(0, 1800).toFixed(0) + 'ms';
-        outer.addEventListener('animationend', function (e) { e.target.remove(); });
-        /* 万一动画事件没来（标签页切走之类），兜个底。 */
-        dropLater(outer, 34000);
+  function stepLetters(ts) {
+    requestAnimationFrame(stepLetters);
+    if (!lastFrame) lastFrame = ts;
+    var dt = Math.min(0.05, (ts - lastFrame) / 1000);
+    lastFrame = ts;
+    if (document.hidden) return;
+
+    var vw = window.innerWidth;
+    var vh = window.innerHeight;
+
+    for (var i = letters.length - 1; i >= 0; i--) {
+      var L = letters[i];
+      L.age += dt * 1000;
+
+      /* 游荡：两个不同周期的正弦叠着推，路线就不会是一条直线。 */
+      L.vx += Math.sin(L.age / 1700 + L.phase) * 3.8 * dt;
+      L.vy += Math.cos(L.age / 2300 + L.phase * 1.7) * 2.8 * dt;
+      L.vy += 1.5 * dt;
+
+      /* 躲鼠标：越近推得越用力。 */
+      var dx = L.x - pointer.x;
+      var dy = L.y - pointer.y;
+      var away = Math.sqrt(dx * dx + dy * dy);
+      if (away < 170 && away > 0.1) {
+        var push = ((170 - away) / 170) * 280 * dt;
+        L.vx += (dx / away) * push;
+        L.vy += (dy / away) * push;
       }
+
+      /* 互相推开：不重叠的主力。 */
+      for (var j = 0; j < letters.length; j++) {
+        if (j === i) continue;
+        var M = letters[j];
+        var ox = L.x - M.x;
+        var oy = L.y - M.y;
+        var gap = Math.sqrt(ox * ox + oy * oy);
+        var need = (Math.max(L.w, L.h) + Math.max(M.w, M.h)) * 0.36;
+        if (gap < need && gap > 0.1) {
+          var force = ((need - gap) / need) * 120 * dt;
+          L.vx += (ox / gap) * force;
+          L.vy += (oy / gap) * force;
+        }
+      }
+
+      /* 别跑出屏幕 */
+      var edge = 26;
+      if (L.x < edge) L.vx += (edge - L.x) * 1.8 * dt;
+      if (L.x > vw - edge) L.vx -= (L.x - (vw - edge)) * 1.8 * dt;
+      if (L.y < edge) L.vy += (edge - L.y) * 1.8 * dt;
+      if (L.y > vh - edge) L.vy -= (L.y - (vh - edge)) * 1.8 * dt;
+
+      /* 阻尼和限速，免得越飘越快 */
+      L.vx *= 0.985;
+      L.vy *= 0.985;
+      var speed = Math.sqrt(L.vx * L.vx + L.vy * L.vy);
+      if (speed > 26) { L.vx = L.vx / speed * 26; L.vy = L.vy / speed * 26; }
+      if (speed < 2.5) { L.vx += rand(-6, 6) * dt; L.vy += rand(-6, 6) * dt; }
+
+      L.x += L.vx * dt;
+      L.y += L.vy * dt;
+
+      /* 摆动 + 呼吸 */
+      L.rot += L.vrot * dt;
+      L.vrot += rand(-9, 9) * dt;
+      L.vrot *= 0.97;
+      if (L.rot > 13) L.vrot -= 6 * dt;
+      if (L.rot < -13) L.vrot += 6 * dt;
+      L.scale = L.baseScale * (1 + Math.sin((L.age / 1000) * L.pulse + L.phase) * 0.055);
+
+      var fadeIn = Math.min(1, L.age / 1500);
+      var fadeOut = Math.min(1, Math.max(0, (L.life - L.age) / 2800));
+      L.el.style.opacity = (L.peak * fadeIn * fadeOut).toFixed(3);
+      L.el.style.transform = 'translate3d(' + (L.x - L.w / 2).toFixed(1) + 'px,'
+        + (L.y - L.h / 2).toFixed(1) + 'px,0) rotate(' + L.rot.toFixed(2) + 'deg) scale(' + L.scale.toFixed(3) + ')';
+
+      if (L.age >= L.life) removeLetter(L);
     }
   }
 
   function startBackgroundLetters() {
     if (!$('bgDecor')) return;
-    sprinkleLetters();
-    setInterval(sprinkleLetters, 4200);
+    addLetter();
+    addLetter();
+    setInterval(addLetter, 2800);
+    document.addEventListener('pointermove', function (e) {
+      pointer.x = e.clientX;
+      pointer.y = e.clientY;
+    }, { passive: true });
+    if (!reduceMotion) requestAnimationFrame(stepLetters);
   }
-
   /* 点下去要有回应：落点炸开一圈，溅几颗碎点，偶尔再蹦一个字母出来。 */
   function spawnAt(node, x, y, cleanupMs) {
     node.style.left = x + 'px';
