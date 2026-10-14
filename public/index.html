@@ -1067,9 +1067,10 @@
     var vw = window.innerWidth;
     var vh = window.innerHeight;
     for (var i = 0; i < 60; i++) {
-      /* 允许压到屏幕外边一点：大字母露出一半，比整整齐齐摆在中间好看。 */
-      var x = rand(-w * 0.22, vw + w * 0.22);
-      var y = rand(-h * 0.12, vh + h * 0.12);
+      /* 整只留在屏幕里：贴到边上被切掉一半就难看了。 */
+      var margin = 10;
+      var x = rand(w / 2 + margin, Math.max(w / 2 + margin + 1, vw - w / 2 - margin));
+      var y = rand(h / 2 + margin, Math.max(h / 2 + margin + 1, vh - h / 2 - margin));
       var spot = {
         l: x - w / 2, r: x + w / 2, t: y - h / 2, b: y + h / 2,
       };
@@ -1103,9 +1104,14 @@
     var minSize = phone ? 34 : 44;
     var maxSize = phone ? 132 : (vw < 1024 ? 200 : 260);
     var size = Math.round(rand(minSize, maxSize));
+    /* 再长的字母也得整只装得下，缩到刚好放得进去为止。 */
+    var maxWidth = vw - 40;
+    if (text.length * size * 0.76 > maxWidth) {
+      size = Math.max(28, Math.floor(maxWidth / (text.length * 0.76)));
+    }
     var w = text.length * size * 0.76;
     var h = size * 1.2;
-    var spot = freeSpot(w, h, Math.max(20, size * 0.18));
+    var spot = freeSpot(w, h, Math.max(26, size * 0.24));
     if (!spot) return;
 
     var outer = document.createElement('span');
@@ -1188,7 +1194,8 @@
       L.targetScale = (mouseAlive && away < 320) ? 1.07 : 1;
       L.scale += (L.targetScale - L.scale) * Math.min(1, dt * 1.6);
 
-      /* 压上了就直接把位置挪开，不加力。这样不会来回弹，也不会抖。 */
+      /* 压上了就做两件事：把位置挪开一点，再把"继续靠近"的那部分速度消掉。
+         只挪位置会被慢慢挤回来，只改速度又会来回弹，两个一起才既稳又不抖。 */
       for (var j = 0; j < letters.length; j++) {
         if (j === i) continue;
         var M = letters[j];
@@ -1198,21 +1205,42 @@
         var overY = Math.min(A.b, B.b) - Math.max(A.t, B.t);
         if (overX > 0 && overY > 0) {
           if (overX < overY) {
-            L.x += (L.x < M.x ? -1 : 1) * Math.min(overX * 0.5, 6);
+            var dirX = L.x < M.x ? -1 : 1;
+            L.x += dirX * Math.min(overX * 0.6, 10);
+            var avgX = (L.vx + M.vx) / 2;
+            L.vx = avgX + dirX * 3;
+            M.vx = avgX - dirX * 3;
           } else {
-            L.y += (L.y < M.y ? -1 : 1) * Math.min(overY * 0.5, 6);
+            var dirY = L.y < M.y ? -1 : 1;
+            L.y += dirY * Math.min(overY * 0.6, 10);
+            var avgY = (L.vy + M.vy) / 2;
+            L.vy = avgY + dirY * 3;
+            M.vy = avgY - dirY * 3;
           }
         }
       }
 
       /* 别跑出屏幕 */
-      var edge = 26;
-      var outX = L.w * 0.22;
-      var outY = L.h * 0.12;
-      if (L.x < edge - outX) L.vx += (edge - outX - L.x) * 1.8 * dt;
-      if (L.x > vw - edge + outX) L.vx -= (L.x - (vw - edge + outX)) * 1.8 * dt;
-      if (L.y < edge - outY) L.vy += (edge - outY - L.y) * 1.8 * dt;
-      if (L.y > vh - edge + outY) L.vy -= (L.y - (vh - edge + outY)) * 1.8 * dt;
+      /* 边界按"整只字母"算，碰到边就被推回来，不会被切掉。 */
+      var edge = 10;
+      var minX = L.w / 2 + edge;
+      var maxX = vw - L.w / 2 - edge;
+      var minY = L.h / 2 + edge;
+      var maxY = vh - L.h / 2 - edge;
+      if (minX < maxX) {
+        if (L.x < minX) L.vx += (minX - L.x) * 1.8 * dt;
+        if (L.x > maxX) L.vx -= (L.x - maxX) * 1.8 * dt;
+      } else {
+        L.x = vw / 2;
+        L.vx = 0;
+      }
+      if (minY < maxY) {
+        if (L.y < minY) L.vy += (minY - L.y) * 1.8 * dt;
+        if (L.y > maxY) L.vy -= (L.y - maxY) * 1.8 * dt;
+      } else {
+        L.y = vh / 2;
+        L.vy = 0;
+      }
 
       /* 阻尼和限速 */
       L.vx *= 0.994;
