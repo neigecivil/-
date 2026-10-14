@@ -47,3 +47,4 @@ database_id = "03d771d3-34d0-4e2c-8869-40541ab8b4ba"
 # STORAGE_RESERVE_MB = "200"       # 预留缓冲，默认 200MB
 # STORAGE_WARN_PERCENT = "80"      # 到几成开始提醒
 # GUARD_BLOCK_DOWNLOADS = "true"   # 满了要不要连下载也停；填 false 就只停上传
+# USER_QUOTA_MB = "1024"          # 每个人自己的上传额度，默认 1GB；管理员不受限

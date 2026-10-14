@@ -340,3 +340,167 @@ test('把文件后端换成 KV 时同样能跑通', async (t) => {
     assert.equal(b.data.partSize, 2 * 1024 * 1024);
   });
 });
+
+/* ── 配额与邀请码作废 ───────────────────────────────────── */
+
+test('配额接口', async (t) => {
+  await t.test('没登录不能看', async () => {
+    const { env } = setup();
+    const r = await call(env, '/api/quota');
+    assert.equal(r.status, 401);
+  });
+
+  await t.test('登录后能看到自己的额度', async () => {
+    const { env } = setup();
+    const { cookie: adminCookie } = await registerAdmin(env);
+    const made = await call(env, '/api/admin/invites', {
+      method: 'POST', cookie: adminCookie, body: { role: 'member', maxUses: 1 },
+    });
+    const member = await call(env, '/api/register', {
+      method: 'POST',
+      body: { username: '成员甲', password: 'harbor-lantern-77', inviteCode: made.data.invite.code },
+    });
+    const cookie = sidFrom(member);
+
+    const r = await call(env, '/api/quota', { cookie });
+    assert.equal(r.status, 200);
+    assert.equal(r.data.quota.unlimited, false);
+    assert.equal(r.data.quota.usedBytes, 0);
+    assert.match(r.data.quota.limitText, /GB/);
+  });
+
+  await t.test('管理员看到的是不限额', async () => {
+    const { env } = setup();
+    const { cookie } = await registerAdmin(env);
+    const r = await call(env, '/api/quota', { cookie });
+    assert.equal(r.data.quota.unlimited, true);
+    assert.equal(r.data.quota.remainingText, '不限额');
+  });
+});
+
+test('作废邀请码', async (t) => {
+  await t.test('作废之后那个码注册不了', async () => {
+    const { env } = setup();
+    const { cookie: adminCookie } = await registerAdmin(env);
+    const made = await call(env, '/api/admin/invites', {
+      method: 'POST', cookie: adminCookie, body: { role: 'member', maxUses: 1 },
+    });
+    const code = made.data.invite.code;
+
+    const gone = await call(env, '/api/admin/invites/revoke', { method: 'POST', cookie: adminCookie, body: { code } });
+    assert.equal(gone.status, 200);
+
+    const blocked = await call(env, '/api/register', {
+      method: 'POST',
+      body: { username: '小明', password: 'harbor-lantern-77', inviteCode: code },
+    });
+    assert.equal(blocked.status, 400);
+    assert.match(blocked.data.error, /作废/);
+  });
+
+  await t.test('普通成员发不了作废请求', async () => {
+    const { env } = setup();
+    const { cookie: adminCookie } = await registerAdmin(env);
+    const made = await call(env, '/api/admin/invites', {
+      method: 'POST', cookie: adminCookie, body: { role: 'member', maxUses: 1 },
+    });
+    const member = await call(env, '/api/register', {
+      method: 'POST',
+      body: { username: '成员甲', password: 'harbor-lantern-77', inviteCode: made.data.invite.code },
+    });
+
+    const denied = await call(env, '/api/admin/invites/revoke', {
+      method: 'POST', cookie: sidFrom(member), body: { code: made.data.invite.code },
+    });
+    assert.equal(denied.status, 403);
+  });
+});
+/* ── 图片预览 ───────────────────────────────────────────── */
+
+test('图片预览', async (t) => {
+  async function uploadNamed(env, cookie, fileName, mime, body) {
+    const started = await call(env, '/api/uploads', { method: 'POST', cookie, body: { fileName, fileSize: body.length } });
+    const part = await call(env, '/api/uploads/part', {
+      method: 'PUT', cookie,
+      headers: { 'x-r2-key': started.data.key, 'x-upload-id': started.data.uploadId, 'x-part-number': '1', 'x-part-count': '1' },
+      body,
+    });
+    const done = await call(env, '/api/uploads/complete', {
+      method: 'POST', cookie,
+      body: {
+        key: started.data.key, uploadId: started.data.uploadId, resourceId: started.data.resourceId,
+        partSize: started.data.partSize,
+        parts: [{ partNumber: 1, etag: part.data.etag }],
+        meta: { title: fileName, category: 'design', visibility: 'public' },
+        file: { name: fileName, size: body.length, mime },
+      },
+    });
+    return done.data.resource;
+  }
+
+  await t.test('图片能内联看，类型按文件名给，不跟着客户端报的走', async () => {
+    const { env } = setup();
+    const { cookie } = await registerAdmin(env);
+    const body = new TextEncoder().encode('假装这是图片的字节');
+    /* 客户端硬说自己是 text/html，服务端也只按 .png 发 image/png。 */
+    const made = await uploadNamed(env, cookie, '海报.png', 'text/html', body);
+
+    const view = await call(env, '/api/preview/' + made.id);
+    assert.equal(view.status, 200);
+    assert.equal(view.headers.get('content-type'), 'image/png');
+    assert.match(view.headers.get('content-disposition'), /inline/);
+    assert.equal(view.headers.get('x-content-type-options'), 'nosniff');
+    assert.equal(view.text, '假装这是图片的字节');
+  });
+
+  await t.test('预览不累加下载次数', async () => {
+    const { env } = setup();
+    const { cookie } = await registerAdmin(env);
+    const made = await uploadNamed(env, cookie, '风景.jpg', 'image/jpeg', new TextEncoder().encode('xx'));
+
+    await call(env, '/api/preview/' + made.id);
+    const list = await call(env, '/api/resources');
+    assert.equal(list.data.resources.find((r) => r.id === made.id).downloads, 0);
+  });
+
+  await t.test('不是图片就不给预览', async () => {
+    const { env } = setup();
+    const { cookie } = await registerAdmin(env);
+    const made = await uploadNamed(env, cookie, '报告.pdf', 'application/pdf', new TextEncoder().encode('xx'));
+
+    const view = await call(env, '/api/preview/' + made.id);
+    assert.equal(view.status, 415);
+  });
+
+  await t.test('标成图片的 HTML 也预览不了', async () => {
+    const { env } = setup();
+    const { cookie } = await registerAdmin(env);
+    const made = await uploadNamed(env, cookie, '坏东西.html', 'image/png', new TextEncoder().encode('<script>alert(1)</script>'));
+
+    const view = await call(env, '/api/preview/' + made.id);
+    assert.equal(view.status, 415);
+  });
+
+  await t.test('没登录时，内部可见的图片也预览不了', async () => {
+    const { env } = setup();
+    const { cookie } = await registerAdmin(env);
+    const started = await call(env, '/api/uploads', { method: 'POST', cookie, body: { fileName: '内部.png', fileSize: 2 } });
+    const part = await call(env, '/api/uploads/part', {
+      method: 'PUT', cookie,
+      headers: { 'x-r2-key': started.data.key, 'x-upload-id': started.data.uploadId, 'x-part-number': '1', 'x-part-count': '1' },
+      body: new Uint8Array(2),
+    });
+    const done = await call(env, '/api/uploads/complete', {
+      method: 'POST', cookie,
+      body: {
+        key: started.data.key, uploadId: started.data.uploadId, resourceId: started.data.resourceId,
+        partSize: started.data.partSize, parts: [{ partNumber: 1, etag: part.data.etag }],
+        meta: { title: '内部图', category: 'design', visibility: 'members' },
+        file: { name: '内部.png', size: 2, mime: 'image/png' },
+      },
+    });
+
+    const view = await call(env, '/api/preview/' + done.data.resource.id);
+    assert.equal(view.status, 403);
+  });
+});

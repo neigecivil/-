@@ -79,6 +79,8 @@ function buildService(env) {
     storageLimitBytes: mbToBytes(env.STORAGE_LIMIT_MB, undefined),
     storageReserveBytes: mbToBytes(env.STORAGE_RESERVE_MB, undefined),
     storageWarnPercent: Number(env.STORAGE_WARN_PERCENT) || undefined,
+    /* 每个人自己的额度，默认 1GB；管理员不算这个。 */
+    userQuotaBytes: mbToBytes(env.USER_QUOTA_MB, undefined),
     /* 顶到上限时要不要连下载也停掉。默认停；填 false 就只停上传。 */
     blockDownloadsWhenFull: String(env.GUARD_BLOCK_DOWNLOADS || 'true').toLowerCase() !== 'false',
   });
@@ -99,6 +101,11 @@ async function handleApi(request, env, url) {
   if (section === 'me' && method === 'GET') {
     const user = await service.optionalUser(token);
     return json({ ok: true, user: user ? service.publicUser(user) : null });
+  }
+  /* 每个人都能看自己用掉多少上传额度，不用管理员。 */
+  if (section === 'quota' && method === 'GET') {
+    const quota = await service.quotaReport(token);
+    return json({ ok: true, quota });
   }
 
   if (section === 'register' && method === 'POST') {
@@ -170,6 +177,19 @@ async function handleApi(request, env, url) {
     return json({ ok: true });
   }
 
+  /* 预览：直接用图片本身的类型发给浏览器看，并且钉死几个响应头，
+     免得有人把别的东西伪装成图片让浏览器执行。 */
+  if (section === 'preview' && id && method === 'GET') {
+    const { resource, object, contentType } = await service.preview(token, id);
+    const headers = new Headers();
+    headers.set('content-type', contentType);
+    if (object && object.size) headers.set('content-length', String(object.size));
+    headers.set('content-disposition', 'inline');
+    headers.set('x-content-type-options', 'nosniff');
+    headers.set('content-security-policy', "default-src 'none'; sandbox");
+    headers.set('cache-control', 'private, max-age=120');
+    return new Response(object ? object.body : null, { status: 200, headers });
+  }
   if (section === 'download' && id && method === 'GET') {
     const { resource, object } = await service.download(token, id);
     const headers = new Headers();
@@ -186,6 +206,12 @@ async function handleApi(request, env, url) {
     return json({ ok: true, invites });
   }
 
+  /* 作废要排在新建前面：路径都是 /api/admin/invites，靠后面那段区分。 */
+  if (section === 'admin' && id === 'invites' && parts[3] === 'revoke' && method === 'POST') {
+    const body = await readJsonBody(request);
+    const result = await service.revokeInvite(token, body.code);
+    return json({ ok: true, ...result });
+  }
   if (section === 'admin' && id === 'invites' && method === 'POST') {
     const body = await readJsonBody(request);
     const invite = await service.createInvite(token, body);

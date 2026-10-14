@@ -5,7 +5,7 @@
 
 import crypto from 'node:crypto';
 
-import { AppError, badRequest, unauthorized, forbidden, notFound, conflict } from './errors.js';
+import { AppError, badRequest, unauthorized, forbidden, notFound, conflict, tooLarge } from './errors.js';
 import { checkPassword } from './password.js';
 import { checkInvite, normalizeCode, generateCode } from './invite.js';
 import { can, canSee, canEdit, canDelete } from './roles.js';
@@ -13,6 +13,8 @@ import { checkLoginAllowed, WINDOW_MS } from './loginGuard.js';
 import * as uploads from './uploads.js';
 import * as catalog from './resources.js';
 import { evaluateUsage, canStore, GUARD_DEFAULTS } from './guard.js';
+import { evaluateQuota, canStoreMore, QUOTA_DEFAULTS } from './quota.js';
+import { imageTypeOf, canPreview } from './preview.js';
 
 const SESSION_TTL_MS = 30 * 24 * 3600 * 1000;
 const USERNAME_RE = /^[\w\u4e00-\u9fa5-]{2,20}$/;
@@ -48,12 +50,45 @@ function createService(options) {
   };
   const blockDownloadsWhenFull = options.blockDownloadsWhenFull !== false;
 
+  /* 每人一份额度，管理员不受限。默认 1GB。 */
+  const quotaConfig = {
+    limitBytes: options.userQuotaBytes || QUOTA_DEFAULTS.limitBytes,
+    warnPercent: options.userQuotaWarnPercent || QUOTA_DEFAULTS.warnPercent,
+  };
+
   async function currentUsage() {
     return evaluateUsage(await store.resources.totalBytes(), guardConfig);
   }
 
   function fullMessage() {
     return '存储空间已经满了，为避免产生费用，暂时停止上传。请联系管理员清理。';
+  }
+
+  /* 某个人现在用了多少额度。管理员不算这个额度，他是来管事的。 */
+  async function quotaState(user) {
+    const unlimited = can(user.role, 'manageUsers');
+    const usedBytes = unlimited ? 0 : await store.resources.bytesByOwner(user.id);
+    return evaluateQuota(usedBytes, {
+      limitBytes: quotaConfig.limitBytes,
+      warnPercent: quotaConfig.warnPercent,
+      unlimited,
+    });
+  }
+
+  function quotaMessage(quota, size) {
+    return '你的上传额度不够了：还剩 ' + catalog.humanSize(quota.remainingBytes)
+      + '，这份要 ' + catalog.humanSize(size) + '。删掉一些自己传的文件就能腾出来。';
+  }
+
+  async function quotaReport(sessionToken) {
+    const user = await requireUser(sessionToken);
+    const quota = await quotaState(user);
+    return {
+      ...quota,
+      usedText: catalog.humanSize(quota.usedBytes),
+      limitText: quota.unlimited ? '不限额' : catalog.humanSize(quota.limitBytes),
+      remainingText: quota.unlimited ? '不限额' : catalog.humanSize(quota.remainingBytes),
+    };
   }
 
   const publicUser = (u) => ({ id: u.id, username: u.username, role: u.role });
@@ -238,6 +273,21 @@ function createService(options) {
     }));
   }
 
+  /* 作废一个邀请码：立刻生效，已经用掉的不受影响。 */
+  async function revokeInvite(sessionToken, code) {
+    const user = await requireUser(sessionToken);
+    if (!can(user.role, 'manageUsers')) throw forbidden('只有管理员能作废邀请码');
+
+    const normalized = normalizeCode(code);
+    if (!normalized) throw badRequest('要先说清作废哪一个邀请码');
+
+    const invite = await store.invites.byCode(normalized);
+    if (!invite) throw notFound('没找到这个邀请码');
+
+    await store.invites.revoke(normalized, new Date(now()).toISOString());
+    return { ok: true, code: normalized };
+  }
+
   async function listUsers(sessionToken) {
     const user = await requireUser(sessionToken);
     if (!can(user.role, 'manageUsers')) throw forbidden('只有管理员能看用户列表');
@@ -269,6 +319,12 @@ function createService(options) {
     const usage = await currentUsage();
     if (usage.blocked || !canStore(usage, input.fileSize)) {
       throw new AppError(507, fullMessage());
+    }
+
+    /* 再看他自己的额度够不够。管理员 unlimited，这里直接放行。 */
+    const quota = await quotaState(user);
+    if (!canStoreMore(quota, input.fileSize)) {
+      throw tooLarge(quotaMessage(quota, input.fileSize));
     }
 
     const fileName = String(input.fileName || 'file');
@@ -309,6 +365,13 @@ function createService(options) {
     if (usage.blocked || !canStore(usage, fileSize)) {
       try { await multipart.abort(); } catch (e) { /* 放弃失败也没办法，继续报错 */ }
       throw new AppError(507, fullMessage());
+    }
+
+    /* 同一个人自己的额度也要再核一遍，前端少报大小也绕不过去。 */
+    const quota = await quotaState(user);
+    if (!canStoreMore(quota, fileSize)) {
+      try { await multipart.abort(); } catch (e) { /* 放弃失败也没办法，继续报错 */ }
+      throw tooLarge(quotaMessage(quota, fileSize));
     }
 
     await multipart.complete(input.parts.map((p) => ({ partNumber: Number(p.partNumber), etag: p.etag })));
@@ -390,6 +453,28 @@ function createService(options) {
     return { ok: true };
   }
 
+  /* 预览：拿到图片本身，但不累加下载次数。空间满时和下载一样停掉，
+     免得白白花掉读取额度。 */
+  async function preview(sessionToken, id) {
+    const viewer = await optionalUser(sessionToken);
+    const role = viewer ? viewer.role : VIEWER_ANONYMOUS;
+
+    if (blockDownloadsWhenFull && !can(role, 'manageUsers')) {
+      const usage = await currentUsage();
+      if (usage.blocked) {
+        throw new AppError(503, '存储空间已满，为避免产生费用暂时停止下载。请联系管理员。');
+      }
+    }
+
+    const resource = await store.resources.byId(id);
+    if (!resource) throw notFound('这份资源已经不在了');
+    if (!canSee(role, resource)) throw forbidden('这份资源要登录才能看');
+    if (!canPreview(resource.file_name)) throw new AppError(415, '这种文件不能在线预览，下载下来看吧。');
+
+    const object = await files.read(resource.r2_key);
+    return { resource, object, contentType: imageTypeOf(resource.file_name) };
+  }
+
   async function download(sessionToken, id) {
     const viewer = await optionalUser(sessionToken);
     const role = viewer ? viewer.role : VIEWER_ANONYMOUS;
@@ -412,9 +497,9 @@ function createService(options) {
 
   return {
     register, login, logout, changePassword,
-    createInvite, listInvites, listUsers,
+    createInvite, listInvites, revokeInvite, listUsers, quotaReport,
     listResources, startUpload, uploadPart, completeUpload, abortUpload, usageReport,
-    updateResource, deleteResource, download,
+    updateResource, deleteResource, download, preview,
     requireUser, optionalUser, publicUser,
   };
 }

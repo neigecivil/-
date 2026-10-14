@@ -56,19 +56,19 @@ test('删除权限', async (t) => {
   const bob = { id: 'u_b' };
 
   await t.test('本人可以删自己的', () => {
-    assert.equal(canDelete('member', alice, { ownerId: 'u_a' }), true);
+    assert.equal(canDelete('member', alice, { owner_id: 'u_a' }), true);
   });
 
   await t.test('成员删不了别人的', () => {
-    assert.equal(canDelete('member', bob, { ownerId: 'u_a' }), false);
+    assert.equal(canDelete('member', bob, { owner_id: 'u_a' }), false);
   });
 
   await t.test('管理员可以删任何人的', () => {
-    assert.equal(canDelete('admin', bob, { ownerId: 'u_a' }), true);
+    assert.equal(canDelete('admin', bob, { owner_id: 'u_a' }), true);
   });
 
   await t.test('游客删不了任何东西', () => {
-    assert.equal(canDelete('guest', alice, { ownerId: 'u_a' }), false);
+    assert.equal(canDelete('guest', alice, { owner_id: 'u_a' }), false);
   });
 });
 

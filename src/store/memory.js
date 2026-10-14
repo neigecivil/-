@@ -70,6 +70,11 @@ function createMemoryStore() {
       async totalBytes() {
         return resources.reduce((sum, r) => sum + Number(r.file_size || 0), 0);
       },
+      async bytesByOwner(ownerId) {
+        return resources
+          .filter((r) => r.owner_id === ownerId)
+          .reduce((sum, r) => sum + Number(r.file_size || 0), 0);
+      },
       async update(id, fields) {
         const r = resources.find((x) => x.id === id);
         if (!r) return;

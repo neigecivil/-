@@ -121,6 +121,10 @@ function createD1Store(db) {
         const row = await one('SELECT COALESCE(SUM(file_size), 0) AS total FROM resources', []);
         return row ? Number(row.total) : 0;
       },
+      async bytesByOwner(ownerId) {
+        const row = await one('SELECT COALESCE(SUM(file_size), 0) AS total FROM resources WHERE owner_id = ?', [ownerId]);
+        return row ? Number(row.total) : 0;
+      },
       async update(id, fields) {
         const sets = [];
         const args = [];

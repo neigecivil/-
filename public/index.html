@@ -398,9 +398,55 @@
   .seg button.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 
   .file-note { font-size: 12.5px; color: var(--muted); margin-top: 7px; line-height: 1.6; }
-</style>
+
+  /* ═══ 背景字母：淡，但看得见；随机飘，点一下有回应 ═══════ */
+  .bg-decor {
+    position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none;
+  }
+  /* 正文和页脚抬到装饰层上面。弹窗和提示本来层级就更高，不受影响。 */
+  body > header, body > main, body > footer { position: relative; z-index: 1; }
+  .bg-decor span {
+    position: absolute;
+    font-family: var(--serif); font-weight: 700; letter-spacing: .08em;
+    white-space: nowrap; color: var(--accent);
+    opacity: 0; will-change: transform, opacity;
+    animation: drift var(--life, 18s) ease-in-out forwards;
+  }
+  @keyframes drift {
+    0%   { opacity: 0; transform: translate3d(0, 22px, 0) rotate(var(--tilt, 0deg)) scale(.94); }
+    16%  { opacity: var(--peak, .08); }
+    74%  { opacity: var(--peak, .08); }
+    100% { opacity: 0; transform: translate3d(var(--drift, 18px), -40px, 0) rotate(var(--tilt, 0deg)) scale(1.05); }
+  }
+
+  /* 点下去的反馈：按钮缩一点，落点冒一圈涟漪 */
+  .btn, .dl, .drawer, .sub, .scope button, .seg button, .foot-link, .x, .rm, .drop, .tabs button {
+    transition: transform .12s ease, box-shadow .16s ease, border-color .15s ease,
+                background .15s ease, color .15s ease;
+  }
+  .btn:active, .dl:active, .drawer:active, .sub:active, .scope button:active,
+  .seg button:active, .foot-link:active, .rm:active, .drop:active, .tabs button:active { transform: scale(.97); }
+  .ripple {
+    position: fixed; pointer-events: none; z-index: 80;
+    width: 14px; height: 14px; margin: -7px 0 0 -7px;
+    border-radius: 50%; border: 1.5px solid var(--accent);
+    animation: ripple .55s ease-out forwards;
+  }
+  @keyframes ripple {
+    0%   { transform: scale(.4); opacity: .5; }
+    100% { transform: scale(4.2); opacity: 0; }
+  }
+
+  /* 图片预览 */
+  .preview { display: grid; place-items: center; gap: 12px; }
+  .preview img {
+    max-width: 100%; max-height: 62vh; border-radius: var(--radius-sm);
+    border: 1px solid var(--line); background: var(--surface-2);
+  }
+  .acts .btn-sm { height: 32px; }</style>
 </head>
 <body>
+  <div class="bg-decor" id="bgDecor" aria-hidden="true"></div>
   <header class="masthead">
     <div class="shell">
       <div class="masthead-row">
@@ -418,6 +464,7 @@
 
       <p class="lede" id="welcome"></p>
       <div class="banner" id="usageBanner" hidden></div>
+      <div class="banner" id="quotaBanner" hidden></div>
       <nav class="drawers" id="cats" aria-label="按分类筛选"></nav>
       <div class="subdrawers" id="subdrawers" hidden></div>
     </div>
@@ -518,6 +565,7 @@
           </div>
           <div class="progress" id="prog"><i></i></div>
           <p class="progress-text" id="progText" hidden></p>
+          <p class="file-note" id="quotaLine" hidden></p>
         </div>
         <div class="modal-foot">
           <button type="button" class="btn" id="uploadCancel">取消</button>
@@ -670,6 +718,24 @@
     </div>
   </div>
 
+  <div class="mask" id="previewMask">
+    <div class="modal" style="width:min(880px,100%)" role="dialog" aria-modal="true" aria-labelledby="previewTitle">
+      <div class="modal-head">
+        <div>
+          <h2 id="previewTitle">预览</h2>
+          <p id="previewMeta"></p>
+        </div>
+        <button class="x" id="previewClose" type="button" aria-label="关闭">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="preview"><img id="previewImg" alt="" /></div>
+      </div>
+      <div class="modal-foot">
+        <a class="btn" id="previewDownload" href="#">下载原图</a>
+        <button type="button" class="btn btn-solid" id="previewDone">关闭</button>
+      </div>
+    </div>
+  </div>
   <div class="toast" id="toast" aria-live="assertive"></div>
 
 <script>
@@ -700,6 +766,7 @@
     pendingUpload: false,
     seq: 0,
     usage: null,
+    quota: null,
     adminTab: 'invites',
     adminResources: [],
     editingId: null,
@@ -732,6 +799,10 @@
     if (days < 30) return days + ' 天前';
     return Math.floor(days / 30) + ' 个月前';
   }
+  /* 能在线看的只有图片；视频按需求不做预览。 */
+  var IMAGE_RE = /\.(png|jpe?g|gif|webp|bmp|avif)$/i;
+  function isImageName(name) { return IMAGE_RE.test(String(name || '')); }
+
   function extOf(fileName) {
     var m = /\.([A-Za-z0-9]{1,5})$/.exec(String(fileName || ''));
     return m ? m[1].toUpperCase() : 'FILE';
@@ -830,6 +901,51 @@
     applyTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
   });
 
+  /* ── 背景字母与点击反馈 ─────────────────────────────────── */
+  var BG_LETTERS = ['hc', 'lfl', 'hs', 'cyr', 'cwn', 'cxx'];
+  var reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+  /* 一次撒 1~3 个字母出去，位置、大小、透明度都随机，
+     飘完自己收场，不留在 DOM 里堆着。 */
+  function sprinkleLetters() {
+    var layer = $('bgDecor');
+    if (!layer || document.hidden || reduceMotion) return;
+
+    var count = Math.random() < 0.45 ? 1 : (Math.random() < 0.7 ? 2 : 3);
+    for (var i = 0; i < count; i++) {
+      var node = document.createElement('span');
+      node.textContent = BG_LETTERS[Math.floor(Math.random() * BG_LETTERS.length)];
+      node.style.fontSize = (44 + Math.random() * 110).toFixed(0) + 'px';
+      node.style.left = (Math.random() * 88).toFixed(1) + '%';
+      node.style.top = (6 + Math.random() * 76).toFixed(1) + '%';
+      node.style.setProperty('--peak', (0.06 + Math.random() * 0.07).toFixed(3));
+      node.style.setProperty('--life', (14 + Math.random() * 12).toFixed(1) + 's');
+      node.style.setProperty('--tilt', (Math.random() * 18 - 9).toFixed(1) + 'deg');
+      node.style.setProperty('--drift', (Math.random() * 70 - 35).toFixed(0) + 'px');
+      node.style.animationDelay = (Math.random() * 1600).toFixed(0) + 'ms';
+      layer.appendChild(node);
+      node.addEventListener('animationend', function (e) { e.target.remove(); });
+      /* 万一动画事件没来（标签页切走之类），兜个底。 */
+      setTimeout(function (el) { return function () { if (el.parentNode) el.parentNode.removeChild(el); }; }(node), 32000);
+    }
+  }
+
+  function startBackgroundLetters() {
+    if (!$('bgDecor')) return;
+    sprinkleLetters();
+    setInterval(sprinkleLetters, 4200);
+  }
+
+  /* 点哪儿哪儿冒一圈，看得见"点到了"。 */
+  document.addEventListener('pointerdown', function (e) {
+    if (reduceMotion || e.button !== 0) return;
+    var dot = document.createElement('span');
+    dot.className = 'ripple';
+    dot.style.left = e.clientX + 'px';
+    dot.style.top = e.clientY + 'px';
+    document.body.appendChild(dot);
+    dot.addEventListener('animationend', function () { dot.remove(); });
+  });
   /* ── 顶栏与欢迎语 ───────────────────────────────────────── */
   function renderWelcome() {
     var el = $('welcome');
@@ -895,6 +1011,25 @@
     box.innerHTML = html;
   }
 
+  /* ── 图片预览 ───────────────────────────────────────────── */
+  function openPreview(id) {
+    var r = findById(state.resources, id);
+    if (!r) return;
+    $('previewTitle').textContent = r.title;
+    $('previewMeta').textContent = r.fileName + ' · ' + r.fileSize + ' · ' + r.owner;
+    $('previewDownload').href = '/api/download/' + r.id;
+    var img = $('previewImg');
+    img.alt = r.title;
+    img.src = '/api/preview/' + r.id;
+    openModal($('previewMask'));
+  }
+
+  function closePreview() {
+    closeModal($('previewMask'));
+    /* 关掉就把地址撤了，下次打开重新取，省得看着看着变成旧图。 */
+    $('previewImg').removeAttribute('src');
+  }
+
   /* ── 列表 ───────────────────────────────────────────────── */
   function rowHTML(r) {
     var platform = r.platformName ? '<span>' + esc(r.platformName) + '</span>' : '';
@@ -916,6 +1051,7 @@
       + '</div></div>'
       + '<div class="acts">'
       + (r.mine || isAdmin() ? '<button class="rm" type="button" data-del="' + r.id + '" aria-label="删除《' + esc(r.title) + '》">✕</button>' : '')
+      + (isImageName(r.fileName) ? '<button class="btn btn-sm" type="button" data-view="' + r.id + '">预览</button>' : '')
       + '<a class="dl" href="/api/download/' + r.id + '" data-dl="1">下载</a>'
       + '</div></article>';
   }
@@ -1058,23 +1194,32 @@
     $('prog').classList.remove('on');
     $('prog').firstElementChild.style.width = '0%';
     $('progText').hidden = true;
+    renderQuota();
+    loadQuota();
     openModal($('uploadMask'));
   }
 
-  /* 把文件切开，逐个发。每片都远小于 Cloudflare 的请求体上限。 */
+  /* 同时跑几路。一路太慢，太多又容易把小水管和 Worker 的内存挤爆，4 路比较稳。 */
+  var UPLOAD_LANES = 4;
+
+  /* 把文件切开，几路一起发。每片都远小于 Cloudflare 的请求体上限。
+     分片直接以 Blob 交给 fetch，浏览器边读边发，不用先在内存里攒一整块。 */
   async function sendFileInParts(file, meta, onPart) {
     var started = await api('/api/uploads', { method: 'POST', body: { fileName: file.name, fileSize: file.size } });
     var partCount = Math.max(1, Math.ceil(file.size / started.partSize));
-    var parts = [];
+    var parts = new Array(partCount);
+    var next = 1;
+    var done = 0;
 
-    try {
-      for (var i = 1; i <= partCount; i++) {
+    async function lane() {
+      for (;;) {
+        var i = next++;
+        if (i > partCount) return;
         var from = (i - 1) * started.partSize;
         var slice = file.slice(from, Math.min(from + started.partSize, file.size));
-        var buffer = await slice.arrayBuffer();
         var uploaded = await api('/api/uploads/part', {
           method: 'PUT',
-          raw: buffer,
+          raw: slice,
           headers: {
             'Content-Type': 'application/octet-stream',
             'X-R2-Key': started.key,
@@ -1083,9 +1228,17 @@
             'X-Part-Count': String(partCount),
           },
         });
-        parts.push({ partNumber: uploaded.partNumber, etag: uploaded.etag });
-        onPart(i, partCount);
+        parts[i - 1] = { partNumber: uploaded.partNumber, etag: uploaded.etag };
+        done += 1;
+        onPart(done, partCount);
       }
+    }
+
+    try {
+      var lanes = [];
+      var width = Math.min(UPLOAD_LANES, partCount);
+      for (var n = 0; n < width; n++) lanes.push(lane());
+      await Promise.all(lanes);
     } catch (err) {
       /* 传了一半失败就把这次上传放弃掉，别在服务器上留垃圾。 */
       api('/api/uploads/abort', {
@@ -1139,6 +1292,7 @@
       closeModal($('uploadMask'));
       toast('传好了，大家现在能搜到它');
       loadUsage();
+      loadQuota();
       state.category = 'all';
       state.platform = 'all';
       setScope('all');
@@ -1228,8 +1382,10 @@
       || invite.usedCount >= invite.maxUses;
     var meta = '用了 ' + invite.usedCount + ' / ' + invite.maxUses;
     if (invite.expiresAt) meta += ' · ' + new Date(invite.expiresAt).toLocaleDateString('zh-CN');
+    var kill = dead ? '' : '<button class="btn btn-sm" type="button" data-revoke="' + esc(invite.code) + '">作废</button>';
     return '<li><span class="code' + (dead ? ' dead' : '') + '">' + esc(invite.formatted) + '</span>'
       + '<span class="vis">' + esc(ROLE_NAME[invite.role] || invite.role) + '</span>'
+      + kill
       + '<span class="meta">' + esc(meta) + (dead ? ' · 已失效' : '') + '</span></li>';
   }
 
@@ -1261,6 +1417,45 @@
     } catch (e) {
       box.hidden = true;
     }
+  }
+
+  /* ── 自己的上传额度 ─────────────────────────────────────── */
+  async function loadQuota() {
+    if (!state.me) { state.quota = null; renderQuota(); return; }
+    try {
+      var data = await api('/api/quota');
+      state.quota = data.quota;
+    } catch (e) {
+      state.quota = null;
+    }
+    renderQuota();
+  }
+
+  function renderQuota() {
+    var banner = $('quotaBanner');
+    var line = $('quotaLine');
+    var q = state.quota;
+
+    if (!q || q.unlimited || q.level === 'ok') {
+      banner.hidden = true;
+    } else {
+      banner.hidden = false;
+      banner.className = 'banner' + (q.blocked ? ' blocked' : '');
+      banner.textContent = q.blocked
+        ? '你的上传额度已经用满了（' + q.usedText + ' / ' + q.limitText + '）。删掉一些自己传的文件，就能接着传新的。'
+        : '你的上传额度用了 ' + q.percent + '%，还剩 ' + q.remainingText + '。';
+    }
+
+    if (!q) {
+      line.hidden = true;
+      return;
+    }
+    line.hidden = false;
+    line.textContent = q.unlimited
+      ? '上传不限额。'
+      : (q.blocked
+        ? '额度已用满：' + q.usedText + ' / ' + q.limitText + '。删掉一些自己传的文件就能继续。'
+        : '已用 ' + q.usedText + ' / ' + q.limitText + '，还能传 ' + q.remainingText + '。');
   }
 
   function switchAdminTab(tab) {
@@ -1472,12 +1667,16 @@
         .then(function () {
           toast('已经删掉了');
           loadUsage();
+          loadQuota();
           loadCounts();
           loadList();
         })
         .catch(function (err) { toast(err.message); });
       return;
     }
+    var viewBtn = e.target.closest('[data-view]');
+    if (viewBtn) { openPreview(viewBtn.dataset.view); return; }
+
     if (e.target.closest('[data-dl]')) setTimeout(loadList, 1200);
   });
 
@@ -1526,6 +1725,15 @@
   $('editClose').addEventListener('click', function () { closeModal($('editMask')); });
   $('editCancel').addEventListener('click', function () { closeModal($('editMask')); });
 
+  $('inviteList').addEventListener('click', function (e) {
+    var button = e.target.closest('[data-revoke]');
+    if (!button) return;
+    if (!confirm('作废之后这个邀请码就不能注册了，确定吗？')) return;
+    api('/api/admin/invites/revoke', { method: 'POST', body: { code: button.dataset.revoke } })
+      .then(function () { toast('作废了'); return loadInvites(); })
+      .catch(function (err) { toast(err.message); });
+  });
+
   $('invCreate').addEventListener('click', createInvite);
   $('invCopy').addEventListener('click', function () {
     var text = $('invCode').textContent;
@@ -1538,6 +1746,12 @@
   $('adminClose').addEventListener('click', function () { closeModal($('adminMask')); });
   $('adminDone').addEventListener('click', function () { closeModal($('adminMask')); });
   
+  $('previewClose').addEventListener('click', closePreview);
+  $('previewDone').addEventListener('click', closePreview);
+  $('previewMask').addEventListener('click', function (e) {
+    if (e.target === $('previewMask')) closePreview();
+  });
+
   $('notesLink').addEventListener('click', openNotes);
   $('notesOk').addEventListener('click', dismissNotes);
   $('notesClose').addEventListener('click', dismissNotes);
@@ -1559,6 +1773,8 @@
     renderCats();
     renderVisibilitySeg();
     loadUsage();
+    loadQuota();
+    startBackgroundLetters();
     wireDrop();
     await loadCounts();
     await loadList();

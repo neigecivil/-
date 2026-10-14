@@ -90,7 +90,7 @@ function canDelete(role, user, resource) {
   if (!user || !resource) return false;
   if (can(role, 'deleteAnyResource')) return true;
   if (!can(role, 'deleteOwnResource')) return false;
-  return resource.ownerId === user.id;
+  return resource.owner_id === user.id;
 }
 
 export { ROLES, ANONYMOUS, VISIBILITIES, RULES, isRole, can, canSee, canEdit, canDelete };

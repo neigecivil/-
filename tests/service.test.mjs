@@ -28,6 +28,8 @@ function setup(options) {
     storageReserveBytes: opts.storageReserveBytes,
     storageWarnPercent: opts.storageWarnPercent,
     blockDownloadsWhenFull: opts.blockDownloadsWhenFull,
+    userQuotaBytes: opts.userQuotaBytes,
+    userQuotaWarnPercent: opts.userQuotaWarnPercent,
   });
   return { store, files, clock, svc };
 }
@@ -588,5 +590,193 @@ test('用量保护', async (t) => {
     await ctx.svc.deleteResource(admin.token, made.id);
     const again = await ctx.svc.startUpload(admin.token, { fileName: 'x', fileSize: 100 });
     assert.equal(!!again.key, true, '腾出空间后应该能继续传');
+  });
+});
+
+/* ── 每人配额 ───────────────────────────────────────────── */
+
+test('每人配额', async (t) => {
+  /* 每个成员 1000 字节，用到八成开始提醒。管理员不占这个额度。 */
+  const CAP = { bootstrapCode: 'OPEN-SESAME', userQuotaBytes: 1000, userQuotaWarnPercent: 80 };
+
+  async function withMember(ctx) {
+    const admin = await makeAdmin(ctx);
+    const invite = await ctx.svc.createInvite(admin.token, { role: 'member', maxUses: 5 });
+    const member = await ctx.svc.register({ username: '成员甲', password: 'harbor-lantern-77', inviteCode: invite.code });
+    return { admin, member };
+  }
+
+  await t.test('传超了会被挡下，并且说清还剩多少', async () => {
+    const ctx = setup(CAP);
+    const { member } = await withMember(ctx);
+    await uploadOne(ctx, member, { title: '占了六百', category: 'doc' }, 600);
+
+    const err = await ctx.svc.startUpload(member.token, { fileName: '大文件.bin', fileSize: 500 }).catch((e) => e);
+    assert.equal(err.status, 413);
+    assert.match(err.message, /400 B/);
+  });
+
+  await t.test('刚好放得下就放行', async () => {
+    const ctx = setup(CAP);
+    const { member } = await withMember(ctx);
+    await uploadOne(ctx, member, { title: '占了六百', category: 'doc' }, 600);
+    const started = await ctx.svc.startUpload(member.token, { fileName: '刚好.bin', fileSize: 400 });
+    assert.equal(!!started.key, true);
+  });
+
+  await t.test('别人的文件不占我的额度', async () => {
+    const ctx = setup(CAP);
+    const { admin, member } = await withMember(ctx);
+    await uploadOne(ctx, admin, { title: '管理员的大件', category: 'doc' }, 900);
+    const started = await ctx.svc.startUpload(member.token, { fileName: '我的.bin', fileSize: 900 });
+    assert.equal(!!started.key, true);
+  });
+
+  await t.test('管理员不受这个额度限制', async () => {
+    const ctx = setup(CAP);
+    const admin = await makeAdmin(ctx);
+    await uploadOne(ctx, admin, { title: '第一份', category: 'doc' }, 900);
+    const started = await ctx.svc.startUpload(admin.token, { fileName: '再来.bin', fileSize: 5000 });
+    assert.equal(!!started.key, true);
+  });
+
+  await t.test('删掉自己的文件就把额度腾出来了', async () => {
+    const ctx = setup(CAP);
+    const { member } = await withMember(ctx);
+    const made = await uploadOne(ctx, member, { title: '占了六百', category: 'doc' }, 600);
+    await ctx.svc.deleteResource(member.token, made.id);
+    const started = await ctx.svc.startUpload(member.token, { fileName: '再来.bin', fileSize: 900 });
+    assert.equal(!!started.key, true);
+  });
+
+  await t.test('已经超了的老账号：旧文件留着，只是不能再传', async () => {
+    const ctx = setup(CAP);
+    const { member } = await withMember(ctx);
+    /* 直接塞一份超过额度的老数据，模拟改规矩之前就传上去的东西。 */
+    await ctx.store.resources.insert({
+      id: 'r_old', owner_id: member.user.id, owner_name: member.user.username,
+      title: '以前传的大件', description: '', category: 'doc', platform: '', visibility: 'public',
+      r2_key: 'u/' + member.user.id + '/r_old.bin', file_name: '老东西.bin', file_size: 5000,
+      mime: 'application/octet-stream', downloads: 0, created_at: new Date(ctx.clock.now()).toISOString(),
+    });
+
+    assert.equal((await ctx.store.resources.byId('r_old')).title, '以前传的大件', '旧文件不该被动');
+    const err = await ctx.svc.startUpload(member.token, { fileName: '新的.bin', fileSize: 1 }).catch((e) => e);
+    assert.equal(err.status, 413);
+  });
+
+  await t.test('用到八成进警告档，还没锁住', async () => {
+    const ctx = setup(CAP);
+    const { member } = await withMember(ctx);
+    await uploadOne(ctx, member, { title: '占了八百五', category: 'doc' }, 850);
+    const report = await ctx.svc.quotaReport(member.token);
+    assert.equal(report.level, 'warn');
+    assert.equal(report.blocked, false);
+    assert.equal(report.usedBytes, 850);
+    assert.equal(report.limitBytes, 1000);
+  });
+
+  await t.test('顶满之后就是拦住档', async () => {
+    const ctx = setup(CAP);
+    const { member } = await withMember(ctx);
+    await uploadOne(ctx, member, { title: '占满', category: 'doc' }, 1000);
+    const report = await ctx.svc.quotaReport(member.token);
+    assert.equal(report.blocked, true);
+    assert.equal(report.remainingBytes, 0);
+  });
+
+  await t.test('谁都能看自己的额度，不用管理员', async () => {
+    const ctx = setup(CAP);
+    const { member } = await withMember(ctx);
+    const report = await ctx.svc.quotaReport(member.token);
+    assert.equal(report.usedBytes, 0);
+    assert.equal(report.limitText, '1000 B');
+  });
+
+  await t.test('管理员看到的是「不限额」', async () => {
+    const ctx = setup(CAP);
+    const admin = await makeAdmin(ctx);
+    const report = await ctx.svc.quotaReport(admin.token);
+    assert.equal(report.unlimited, true);
+    assert.equal(report.blocked, false);
+  });
+
+  await t.test('前端少报大小也绕不过额度', async () => {
+    const ctx = setup(CAP);
+    const { member } = await withMember(ctx);
+    await uploadOne(ctx, member, { title: '先占六百', category: 'doc' }, 600);
+
+    const started = await ctx.svc.startUpload(member.token, { fileName: '撒谎.bin', fileSize: 10 });
+    const part = await ctx.svc.uploadPart(member.token, {
+      key: started.key, uploadId: started.uploadId, partNumber: 1, partCount: 1, data: new Uint8Array(500),
+    });
+    await assert.rejects(
+      () => ctx.svc.completeUpload(member.token, {
+        key: started.key,
+        uploadId: started.uploadId,
+        resourceId: started.resourceId,
+        partSize: started.partSize,
+        parts: [part],
+        meta: { title: '撒谎的文件', category: 'doc' },
+        file: { name: '撒谎.bin', size: 500, mime: 'application/octet-stream' },
+      }),
+      /额度/,
+    );
+    assert.equal(ctx.files.aborts.length, 1, '应该已经放弃这次上传');
+  });
+});
+
+/* ── 邀请码作废 ─────────────────────────────────────────── */
+
+test('邀请码作废', async (t) => {
+  await t.test('作废之后谁也用不了', async () => {
+    const ctx = setup({ bootstrapCode: 'OPEN-SESAME' });
+    const admin = await makeAdmin(ctx);
+    const invite = await ctx.svc.createInvite(admin.token, { role: 'member', maxUses: 1 });
+
+    await ctx.svc.revokeInvite(admin.token, invite.code);
+    await assert.rejects(
+      () => ctx.svc.register({ username: '小明', password: 'harbor-lantern-77', inviteCode: invite.code }),
+      /作废/,
+    );
+  });
+
+  await t.test('列表里能看出哪个作废了', async () => {
+    const ctx = setup({ bootstrapCode: 'OPEN-SESAME' });
+    const admin = await makeAdmin(ctx);
+    const invite = await ctx.svc.createInvite(admin.token, { role: 'member', maxUses: 1 });
+
+    const before = await ctx.svc.listInvites(admin.token);
+    assert.equal(before[0].revoked, false);
+
+    await ctx.svc.revokeInvite(admin.token, invite.code);
+    const after = await ctx.svc.listInvites(admin.token);
+    assert.equal(after[0].revoked, true);
+  });
+
+  await t.test('普通成员作废不了', async () => {
+    const ctx = setup({ bootstrapCode: 'OPEN-SESAME' });
+    const admin = await makeAdmin(ctx);
+    const invite = await ctx.svc.createInvite(admin.token, { role: 'member', maxUses: 1 });
+    const member = await ctx.svc.register({ username: '成员甲', password: 'harbor-lantern-77', inviteCode: invite.code });
+    const another = await ctx.svc.createInvite(admin.token, { role: 'member', maxUses: 1 });
+
+    await assert.rejects(() => ctx.svc.revokeInvite(member.token, another.code), /管理员/);
+  });
+
+  await t.test('作废一个不存在的码会说清楚', async () => {
+    const ctx = setup({ bootstrapCode: 'OPEN-SESAME' });
+    const admin = await makeAdmin(ctx);
+    await assert.rejects(() => ctx.svc.revokeInvite(admin.token, 'ZZZZZZZZZZ'), /没找到/);
+  });
+
+  await t.test('已经用掉的码照样能标作废，不报错', async () => {
+    const ctx = setup({ bootstrapCode: 'OPEN-SESAME' });
+    const admin = await makeAdmin(ctx);
+    const invite = await ctx.svc.createInvite(admin.token, { role: 'member', maxUses: 1 });
+    await ctx.svc.register({ username: '小明', password: 'harbor-lantern-77', inviteCode: invite.code });
+
+    const result = await ctx.svc.revokeInvite(admin.token, invite.code);
+    assert.equal(result.ok, true);
   });
 });
