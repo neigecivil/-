@@ -39,6 +39,14 @@
     --warn-line:   #efd9a4;
     --warn-ink:    #7a5a1e;
 
+    /* 背景字母用的几种颜色，都比主色淡一点；深浅各一套。 */
+    --ink-1: #2e6a5b;   /* 松绿 */
+    --ink-2: #3f5d7a;   /* 灰蓝 */
+    --ink-3: #78581d;   /* 赭黄 */
+    --ink-4: #5b4a72;   /* 紫灰 */
+    --ink-5: #6d4a3f;   /* 陶土 */
+    --ink-6: #456b63;   /* 苔绿 */
+
     --radius-xs: 6px;
     --radius-sm: 11px;
     --radius-md: 16px;
@@ -71,6 +79,13 @@
     --warn-soft:   #2a2416;
     --warn-line:   #574a24;
     --warn-ink:    #e0c37a;
+
+    --ink-1: #71c1a6;
+    --ink-2: #8fb3d9;
+    --ink-3: #d8b06a;
+    --ink-4: #b49ad6;
+    --ink-5: #c9988a;
+    --ink-6: #9dc3b8;
 
     --shadow-modal: 0 24px 60px -30px rgba(0, 0, 0, .9);
     --overlay: rgba(0, 0, 0, .6);
@@ -406,24 +421,26 @@
   }
   body > header, body > main, body > footer { position: relative; z-index: 1; }
 
+  /* 大字号要配紧字距，不然只是"放大"，不是排版。 */
   .bg-decor > span {
     position: absolute; left: 0; top: 0; line-height: 1;
-    font-family: var(--serif); font-weight: 700; letter-spacing: .06em;
-    white-space: nowrap; color: var(--accent);
+    font-family: var(--serif); font-weight: 700; letter-spacing: -.02em;
+    white-space: nowrap; color: var(--ink-1);
     opacity: 0; will-change: transform, opacity;
     transform-origin: center center;
   }
-  /* 里面这层自己轻轻上下晃，跟外层的位置计算不打架。 */
-  .bg-decor > span > i {
-    display: inline-block; font-style: normal;
-    animation: bobble var(--bobble, 6s) ease-in-out infinite;
-  }
-  /* 三种质地：实心、空心描边、虚化。 */
-  .bg-decor > span.hollow { color: transparent; -webkit-text-stroke: 1.3px var(--accent); }
-  .bg-decor > span.soft { font-weight: 400; letter-spacing: .16em; }
-  @keyframes bobble {
-    0%, 100% { transform: translateY(-1.5px); }
-    50%      { transform: translateY(2px); }
+  .bg-decor > span > i { display: inline-block; font-style: normal; }
+  /* 三种质地：实心、空心描边、细体。颜色各自从 --ink-1~6 里挑。 */
+  .bg-decor > span.hollow { color: transparent; -webkit-text-stroke: 1.2px; }
+  .bg-decor > span.soft { font-weight: 400; letter-spacing: .1em; }
+
+  /* 铺一层很淡的角落色晕，让纯平底色有点空气感。
+     它在正文下面，不吃点击。 */
+  .page-wash {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background:
+      radial-gradient(42% 46% at 8% 4%, var(--accent-soft) 0%, transparent 70%),
+      radial-gradient(36% 40% at 96% 92%, var(--accent-soft) 0%, transparent 72%);
   }
   /* ═══ 点击反馈：按钮缩一下，落点炸开一圈 ═════════════ */
   .btn, .dl, .drawer, .sub, .scope button, .seg button, .foot-link, .x, .rm, .drop, .tabs button {
@@ -497,6 +514,7 @@
 </style>
 </head>
 <body>
+  <div class="page-wash" aria-hidden="true"></div>
   <div class="bg-decor" id="bgDecor" aria-hidden="true"></div>
   <header class="masthead">
     <div class="shell">
@@ -1024,8 +1042,9 @@
     var vw = window.innerWidth;
     var vh = window.innerHeight;
     for (var i = 0; i < 60; i++) {
-      var x = rand(w / 2 + 8, Math.max(w / 2 + 9, vw - w / 2 - 8));
-      var y = rand(h / 2 + 8, Math.max(h / 2 + 9, vh - h / 2 - 8));
+      /* 允许压到屏幕外边一点：大字母露出一半，比整整齐齐摆在中间好看。 */
+      var x = rand(-w * 0.22, vw + w * 0.22);
+      var y = rand(-h * 0.12, vh + h * 0.12);
       var spot = {
         l: x - w / 2, r: x + w / 2, t: y - h / 2, b: y + h / 2,
       };
@@ -1065,32 +1084,28 @@
     inner.textContent = text;
     outer.appendChild(inner);
     outer.style.fontSize = size + 'px';
-    outer.style.setProperty('--bobble', rand(4.5, 9).toFixed(1) + 's');
+    /* 颜色从六种里挑，深浅模式各有一套（见 CSS 里的 --ink-*）。 */
+    outer.style.color = 'var(--ink-' + (1 + Math.floor(Math.random() * 6)) + ')';
     var dice = Math.random();
-    if (dice < 0.16) outer.className = 'hollow';
-    else if (dice < 0.32) outer.className = 'soft';
+    if (dice < 0.18) outer.className = 'hollow';
+    else if (dice < 0.36) outer.className = 'soft';
     layer.appendChild(outer);
 
     var letter = {
       el: outer, w: w, h: h,
       x: spot.x, y: spot.y,
       vx: rand(-7, 7), vy: rand(-5, 3),
-      baseRot: rand(-5, 5), rot: 0,
-      sway: rand(0.16, 0.34), swayAmp: rand(2.5, 6.5),
-      baseScale: rand(0.94, 1.04), scale: 1,
-      phase: rand(0, Math.PI * 2), pulse: rand(0.18, 0.42),
+      tilt: rand(-7, 7),
+      phase: rand(0, Math.PI * 2),
       peak: rand(0.1, 0.2), life: rand(18000, 32000), age: 0,
     };
-    /* 第一帧就要跟后面用同一条公式，否则出场瞬间会"跳"一下。 */
-    letter.rot = letter.baseRot + Math.sin(letter.phase) * letter.swayAmp;
-    letter.scale = letter.baseScale * (1 + Math.sin(letter.phase) * 0.04);
     letters.push(letter);
 
     if (reduceMotion) {
       /* 系统里关了动画：出现、待一会儿、收走，位置照样错开。 */
       outer.style.opacity = letter.peak;
       outer.style.transform = 'translate3d(' + (letter.x - w / 2).toFixed(1) + 'px,'
-        + (letter.y - h / 2).toFixed(1) + 'px,0) rotate(' + letter.rot.toFixed(1) + 'deg)';
+        + (letter.y - h / 2).toFixed(1) + 'px,0) rotate(' + letter.tilt.toFixed(1) + 'deg)';
       setTimeout(function () { removeLetter(letter); }, letter.life);
     }
   }
@@ -1143,10 +1158,12 @@
 
       /* 别跑出屏幕 */
       var edge = 26;
-      if (L.x < edge) L.vx += (edge - L.x) * 1.8 * dt;
-      if (L.x > vw - edge) L.vx -= (L.x - (vw - edge)) * 1.8 * dt;
-      if (L.y < edge) L.vy += (edge - L.y) * 1.8 * dt;
-      if (L.y > vh - edge) L.vy -= (L.y - (vh - edge)) * 1.8 * dt;
+      var outX = L.w * 0.22;
+      var outY = L.h * 0.12;
+      if (L.x < edge - outX) L.vx += (edge - outX - L.x) * 1.8 * dt;
+      if (L.x > vw - edge + outX) L.vx -= (L.x - (vw - edge + outX)) * 1.8 * dt;
+      if (L.y < edge - outY) L.vy += (edge - outY - L.y) * 1.8 * dt;
+      if (L.y > vh - edge + outY) L.vy -= (L.y - (vh - edge + outY)) * 1.8 * dt;
 
       /* 阻尼和限速 */
       L.vx *= 0.994;
@@ -1157,15 +1174,12 @@
       L.x += L.vx * dt;
       L.y += L.vy * dt;
 
-      /* 摆动和呼吸都改成固定的慢正弦：角度不会忽正忽负地乱跳。 */
-      L.rot = L.baseRot + Math.sin((L.age / 1000) * L.sway + L.phase) * L.swayAmp;
-      L.scale = L.baseScale * (1 + Math.sin((L.age / 1000) * L.pulse + L.phase) * 0.04);
-
       var fadeIn = Math.min(1, L.age / 1500);
       var fadeOut = Math.min(1, Math.max(0, (L.life - L.age) / 2800));
       L.el.style.opacity = (L.peak * fadeIn * fadeOut).toFixed(3);
+      /* 只有平移和淡入淡出，倾角是固定的，所以不会晃也不会抽。 */
       L.el.style.transform = 'translate3d(' + (L.x - L.w / 2).toFixed(1) + 'px,'
-        + (L.y - L.h / 2).toFixed(1) + 'px,0) rotate(' + L.rot.toFixed(2) + 'deg) scale(' + L.scale.toFixed(3) + ')';
+        + (L.y - L.h / 2).toFixed(1) + 'px,0) rotate(' + L.tilt.toFixed(2) + 'deg)';
 
       if (L.age >= L.life) removeLetter(L);
     }
