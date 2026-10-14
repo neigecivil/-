@@ -399,44 +399,81 @@
 
   .file-note { font-size: 12.5px; color: var(--muted); margin-top: 7px; line-height: 1.6; }
 
-  /* ═══ 背景字母：淡，但看得见；随机飘，点一下有回应 ═══════ */
+  /* ═══ 背景字母：浮在内容上面那一层，淡，但哪儿都看得见 ═══════
+     弹窗（60）和提示（90）比它高，遮不住操作界面；它自己不吃点击。 */
   .bg-decor {
-    position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none;
+    position: fixed; inset: 0; z-index: 2; overflow: hidden; pointer-events: none;
   }
-  /* 正文和页脚抬到装饰层上面。弹窗和提示本来层级就更高，不受影响。 */
   body > header, body > main, body > footer { position: relative; z-index: 1; }
-  .bg-decor span {
-    position: absolute;
-    font-family: var(--serif); font-weight: 700; letter-spacing: .08em;
+
+  .bg-decor > span {
+    position: absolute; line-height: 1;
+    font-family: var(--serif); font-weight: 700; letter-spacing: .06em;
     white-space: nowrap; color: var(--accent);
     opacity: 0; will-change: transform, opacity;
-    animation: drift var(--life, 18s) ease-in-out forwards;
+    animation: drift var(--life, 18s) cubic-bezier(.37, .01, .3, 1) forwards;
   }
-  /* 系统里关了动画时走这条：不飘不动，安安静静待一会儿。 */
-  .bg-decor span.calm { animation: none; }
+  /* 里面再套一层负责慢慢呼吸。两个动画分开放，免得抢同一个 transform。 */
+  .bg-decor > span > i {
+    display: inline-block; font-style: normal;
+    animation: breathe var(--breathe, 7s) ease-in-out infinite;
+  }
+  /* 三种质地：实心、空心描边、虚化。 */
+  .bg-decor > span.hollow { color: transparent; -webkit-text-stroke: 1.3px var(--accent); }
+  .bg-decor > span.soft { filter: blur(1.6px); }
+  .bg-decor > span.calm,
+  .bg-decor > span.calm > i { animation: none; }
+
   @keyframes drift {
-    0%   { opacity: 0; transform: translate3d(0, 22px, 0) rotate(var(--tilt, 0deg)) scale(.94); }
-    16%  { opacity: var(--peak, .08); }
-    74%  { opacity: var(--peak, .08); }
-    100% { opacity: 0; transform: translate3d(var(--drift, 18px), -40px, 0) rotate(var(--tilt, 0deg)) scale(1.05); }
+    0%   { opacity: 0;  transform: translate3d(0, var(--rise, 40px), 0) rotate(var(--tilt, 0deg)) scale(var(--s0, .88)); }
+    14%  { opacity: var(--peak, .14); }
+    62%  { opacity: var(--peak, .14); }
+    100% { opacity: 0;  transform: translate3d(var(--dx, 30px), var(--dy, -80px), 0) rotate(var(--tilt2, 5deg)) scale(var(--s1, 1.08)); }
+  }
+  @keyframes breathe {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(var(--bob, -12px)); }
   }
 
-  /* 点下去的反馈：按钮缩一点，落点冒一圈涟漪 */
+  /* ═══ 点击反馈：按钮缩一下，落点炸开一圈 ═════════════ */
   .btn, .dl, .drawer, .sub, .scope button, .seg button, .foot-link, .x, .rm, .drop, .tabs button {
     transition: transform .12s ease, box-shadow .16s ease, border-color .15s ease,
                 background .15s ease, color .15s ease;
   }
   .btn:active, .dl:active, .drawer:active, .sub:active, .scope button:active,
-  .seg button:active, .foot-link:active, .rm:active, .drop:active, .tabs button:active { transform: scale(.97); }
+  .seg button:active, .foot-link:active, .rm:active, .drop:active, .tabs button:active { transform: scale(.96); }
+
   .ripple {
     position: fixed; pointer-events: none; z-index: 80;
-    width: 14px; height: 14px; margin: -7px 0 0 -7px;
+    width: 20px; height: 20px; margin: -10px 0 0 -10px;
     border-radius: 50%; border: 1.5px solid var(--accent);
-    animation: ripple .55s ease-out forwards;
+    animation: ripple .62s cubic-bezier(.22, .61, .36, 1) forwards;
   }
   @keyframes ripple {
-    0%   { transform: scale(.4); opacity: .5; }
-    100% { transform: scale(4.2); opacity: 0; }
+    0%   { transform: scale(.3); opacity: .55; }
+    70%  { opacity: .16; }
+    100% { transform: scale(5.2); opacity: 0; }
+  }
+
+  .spark {
+    position: fixed; width: 6px; height: 6px; margin: -3px 0 0 -3px;
+    border-radius: 50%; background: var(--accent); pointer-events: none; z-index: 81;
+    animation: spark .6s cubic-bezier(.2, .7, .3, 1) forwards;
+  }
+  @keyframes spark {
+    0%   { transform: translate3d(0, 0, 0) scale(1); opacity: .8; }
+    100% { transform: translate3d(var(--sx, 20px), var(--sy, -20px), 0) scale(.15); opacity: 0; }
+  }
+
+  .burst-letter {
+    position: fixed; pointer-events: none; z-index: 81; line-height: 1;
+    font-family: var(--serif); font-weight: 700; color: var(--accent);
+    animation: burst .95s cubic-bezier(.2, .7, .3, 1) forwards;
+  }
+  @keyframes burst {
+    0%   { opacity: 0; transform: translate(-50%, -50%) scale(.5) rotate(-9deg); }
+    22%  { opacity: .5; }
+    100% { opacity: 0; transform: translate(-50%, -165%) scale(1.25) rotate(8deg); }
   }
 
   /* 图片预览 */
@@ -907,36 +944,60 @@
   var BG_LETTERS = ['hc', 'lfl', 'hs', 'cyr', 'cwn', 'cxx'];
   var reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
-  /* 一次撒 1~3 个字母出去，位置、大小、透明度都随机，
-     待够时间自己收场，不留在 DOM 里堆着。
-     系统里关掉了动画（prefers-reduced-motion）时照旧出现，只是不飘也不淡出。 */
+  var rand = function (a, b) { return a + Math.random() * (b - a); };
+  var pick = function (list) { return list[Math.floor(Math.random() * list.length)]; };
+
+  function dropLater(el, ms) {
+    setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, ms);
+  }
+
+  /* 撒 1~3 个字母出去。每个的走向、大小、倾斜、质地、呼吸节奏都不一样，
+     待够时间自己收场，不在 DOM 里越堆越多。
+     系统里关掉了动画（prefers-reduced-motion）时照旧出现，只是不飘不动。 */
   function sprinkleLetters() {
     var layer = $('bgDecor');
     if (!layer || document.hidden) return;
 
-    var count = Math.random() < 0.45 ? 1 : (Math.random() < 0.7 ? 2 : 3);
+    var count = Math.random() < 0.4 ? 1 : (Math.random() < 0.72 ? 2 : 3);
     for (var i = 0; i < count; i++) {
-      var node = document.createElement('span');
-      var peak = (0.11 + Math.random() * 0.10).toFixed(3);
-      node.textContent = BG_LETTERS[Math.floor(Math.random() * BG_LETTERS.length)];
-      node.style.fontSize = (52 + Math.random() * 120).toFixed(0) + 'px';
-      node.style.left = (Math.random() * 86).toFixed(1) + '%';
-      node.style.top = (6 + Math.random() * 74).toFixed(1) + '%';
-      node.style.setProperty('--peak', peak);
-      node.style.setProperty('--tilt', (Math.random() * 18 - 9).toFixed(1) + 'deg');
-      node.style.setProperty('--drift', (Math.random() * 70 - 35).toFixed(0) + 'px');
-      layer.appendChild(node);
+      var outer = document.createElement('span');
+      var inner = document.createElement('i');
+      var peak = rand(0.1, 0.23).toFixed(3);
+
+      inner.textContent = pick(BG_LETTERS);
+      outer.appendChild(inner);
+      outer.style.fontSize = rand(54, 186).toFixed(0) + 'px';
+      outer.style.left = rand(0, 86).toFixed(1) + '%';
+      outer.style.top = rand(2, 82).toFixed(1) + '%';
+
+      /* 每个字母走自己那条线：起落方向、转动幅度、呼吸幅度都单独给。 */
+      outer.style.setProperty('--peak', peak);
+      outer.style.setProperty('--tilt', rand(-12, 12).toFixed(1) + 'deg');
+      outer.style.setProperty('--tilt2', rand(-16, 16).toFixed(1) + 'deg');
+      outer.style.setProperty('--dx', rand(-120, 120).toFixed(0) + 'px');
+      outer.style.setProperty('--dy', rand(-150, -50).toFixed(0) + 'px');
+      outer.style.setProperty('--rise', rand(24, 80).toFixed(0) + 'px');
+      outer.style.setProperty('--s0', rand(0.8, 1).toFixed(2));
+      outer.style.setProperty('--s1', rand(1.02, 1.18).toFixed(2));
+      outer.style.setProperty('--bob', rand(-20, -6).toFixed(0) + 'px');
+      outer.style.setProperty('--breathe', rand(5, 11).toFixed(1) + 's');
+
+      var dice = Math.random();
+      if (dice < 0.16) outer.className = 'hollow';
+      else if (dice < 0.32) outer.className = 'soft';
+
+      layer.appendChild(outer);
 
       if (reduceMotion) {
-        node.className = 'calm';
-        node.style.opacity = peak;
-        setTimeout(function (el) { return function () { if (el.parentNode) el.parentNode.removeChild(el); }; }(node), 9000);
+        outer.className += ' calm';
+        outer.style.opacity = peak;
+        dropLater(outer, rand(7000, 12000));
       } else {
-        node.style.setProperty('--life', (14 + Math.random() * 12).toFixed(1) + 's');
-        node.style.animationDelay = (Math.random() * 1600).toFixed(0) + 'ms';
-        node.addEventListener('animationend', function (e) { e.target.remove(); });
+        outer.style.setProperty('--life', rand(16, 30).toFixed(1) + 's');
+        outer.style.animationDelay = rand(0, 1800).toFixed(0) + 'ms';
+        outer.addEventListener('animationend', function (e) { e.target.remove(); });
         /* 万一动画事件没来（标签页切走之类），兜个底。 */
-        setTimeout(function (el) { return function () { if (el.parentNode) el.parentNode.removeChild(el); }; }(node), 32000);
+        dropLater(outer, 34000);
       }
     }
   }
@@ -947,15 +1008,45 @@
     setInterval(sprinkleLetters, 4200);
   }
 
-  /* 点哪儿哪儿冒一圈，看得见"点到了"。 */
+  /* 点下去要有回应：落点炸开一圈，溅几颗碎点，偶尔再蹦一个字母出来。 */
+  function spawnAt(node, x, y, cleanupMs) {
+    node.style.left = x + 'px';
+    node.style.top = y + 'px';
+    document.body.appendChild(node);
+    node.addEventListener('animationend', function () { node.remove(); });
+    dropLater(node, cleanupMs);
+  }
+
   document.addEventListener('pointerdown', function (e) {
-    if (reduceMotion || e.button !== 0) return;
-    var dot = document.createElement('span');
-    dot.className = 'ripple';
-    dot.style.left = e.clientX + 'px';
-    dot.style.top = e.clientY + 'px';
-    document.body.appendChild(dot);
-    dot.addEventListener('animationend', function () { dot.remove(); });
+    if (e.button !== 0 || e.isPrimary === false) return;
+    var x = e.clientX;
+    var y = e.clientY;
+
+    var ring = document.createElement('span');
+    ring.className = 'ripple';
+    spawnAt(ring, x, y, 1000);
+
+    /* 系统里关了动画就到此为止：不炸碎点，也不蹦字母，静态反馈到这儿够了。 */
+    if (reduceMotion) return;
+
+    var sparks = 5 + Math.floor(Math.random() * 3);
+    for (var i = 0; i < sparks; i++) {
+      var dot = document.createElement('span');
+      var angle = (Math.PI * 2 * i) / sparks + Math.random() * 0.7;
+      var dist = rand(20, 58);
+      dot.className = 'spark';
+      dot.style.setProperty('--sx', (Math.cos(angle) * dist).toFixed(0) + 'px');
+      dot.style.setProperty('--sy', (Math.sin(angle) * dist).toFixed(0) + 'px');
+      spawnAt(dot, x, y, 900);
+    }
+
+    if (Math.random() < 0.32) {
+      var letter = document.createElement('span');
+      letter.className = 'burst-letter';
+      letter.textContent = pick(BG_LETTERS);
+      letter.style.fontSize = rand(20, 38).toFixed(0) + 'px';
+      spawnAt(letter, x, y, 1300);
+    }
   });
   /* ── 顶栏与欢迎语 ───────────────────────────────────────── */
   function renderWelcome() {
