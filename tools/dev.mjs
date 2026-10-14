@@ -70,7 +70,11 @@ async function serveStatic(res, pathname) {
   }
   try {
     const body = await fs.readFile(target);
-    res.writeHead(200, { 'content-type': MIME[path.extname(target).toLowerCase()] || 'application/octet-stream' });
+    res.writeHead(200, {
+      'content-type': MIME[path.extname(target).toLowerCase()] || 'application/octet-stream',
+      /* 本地预览不缓存，改完刷新就能看到。 */
+      'cache-control': 'no-store',
+    });
     res.end(body);
   } catch (e) {
     res.writeHead(404, { 'content-type': 'text/html; charset=utf-8' });
