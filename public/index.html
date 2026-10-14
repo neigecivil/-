@@ -1048,7 +1048,7 @@
   /* 每个字母记着自己的位置、速度、倾角，逐帧算下一步。
      走法 = 游荡 + 互相推开 + 躲鼠标，所以路线不会重复，也不会挤成一团。 */
   var letters = [];
-  var pointer = { x: -9999, y: -9999 };
+  var pointer = { x: -9999, y: -9999, at: 0, active: false };
   var lastFrame = 0;
 
   function letterBox(letter) {
@@ -1094,11 +1094,15 @@
 
     var vw = window.innerWidth;
     var vh = window.innerHeight;
-    var room = vw < 640 ? 4 : 7;
+    var room = vw < 640 ? 3 : (vw < 1024 ? 5 : 7);
     if (letters.length >= room) return;
 
     var text = pickLetter();
-    var size = Math.round(rand(64, 240) * (vw < 640 ? 0.62 : 1) * (vh < 700 ? 0.8 : 1));
+    /* 尺寸不固定：手机、平板、桌面各一档，最小也留得住"看得清"。 */
+    var phone = vw < 640;
+    var minSize = phone ? 34 : 44;
+    var maxSize = phone ? 132 : (vw < 1024 ? 200 : 260);
+    var size = Math.round(rand(minSize, maxSize));
     var w = text.length * size * 0.76;
     var h = size * 1.2;
     var spot = freeSpot(w, h, Math.max(20, size * 0.18));
@@ -1122,6 +1126,14 @@
       vx: rand(-7, 7), vy: rand(-5, 3),
       tilt: rand(-7, 7),
       phase: rand(0, Math.PI * 2),
+      /* 每个字母的飘法、快慢、呼吸都不一样，不然一排看下来就是同一个模子。 */
+      wanderAmp: rand(1, 2.6),
+      wanderRate: rand(0.6, 1.6),
+      cap: rand(10, 22),
+      pulseAmp: rand(0.02, 0.05),
+      pulseRate: rand(0.15, 0.35),
+      targetScale: 1,
+      scale: 1,
       peak: rand(0.3, 0.5), life: rand(18000, 32000), age: 0,
     };
     letters.push(letter);
@@ -1149,20 +1161,32 @@
       var L = letters[i];
       L.age += dt * 1000;
 
-      /* 游荡：两个慢周期叠着推。频率低，所以是飘，不是抖。 */
-      L.vx += Math.sin(L.age / 2900 + L.phase) * 1.6 * dt;
-      L.vy += Math.cos(L.age / 3600 + L.phase * 1.7) * 1.1 * dt;
+      /* 游荡：两个慢周期叠着推，每个字母的幅度和快慢都不一样。 */
+      L.vx += Math.sin(L.age / (2900 / L.wanderRate) + L.phase) * 1.6 * L.wanderAmp * dt;
+      L.vy += Math.cos(L.age / (3600 / L.wanderRate) + L.phase * 1.7) * 1.1 * L.wanderAmp * dt;
       L.vy += 0.8 * dt;
 
-      /* 躲鼠标：越近推得越用力，但手法很轻。 */
+      /* 和鼠标的互动：近了被推开，远了被轻轻拉住，中间留一条不动的带。
+         鼠标停下两秒半之后这套力自动失效，触屏上不会一直黏在最后碰的位置。 */
       var dx = L.x - pointer.x;
       var dy = L.y - pointer.y;
       var away = Math.sqrt(dx * dx + dy * dy);
-      if (away > 0.1 && away < 180) {
-        var push = ((180 - away) / 180) * 150 * dt;
-        L.vx += (dx / away) * push;
-        L.vy += (dy / away) * push;
+      var mouseAlive = pointer.active && (Date.now() - pointer.at < 2500);
+      if (mouseAlive && away > 0.1) {
+        if (away < 160) {
+          var push = ((160 - away) / 160) * 180 * dt;
+          L.vx += (dx / away) * push;
+          L.vy += (dy / away) * push;
+        } else if (away > 240 && away < 620) {
+          var pull = ((620 - away) / 380) * 26 * dt;
+          L.vx -= (dx / away) * pull;
+          L.vy -= (dy / away) * pull;
+        }
       }
+
+      /* 鼠标靠近时微微放大，慢慢跟过去，不会一跳一跳。 */
+      L.targetScale = (mouseAlive && away < 320) ? 1.07 : 1;
+      L.scale += (L.targetScale - L.scale) * Math.min(1, dt * 1.6);
 
       /* 压上了就直接把位置挪开，不加力。这样不会来回弹，也不会抖。 */
       for (var j = 0; j < letters.length; j++) {
@@ -1194,7 +1218,7 @@
       L.vx *= 0.994;
       L.vy *= 0.994;
       var speed = Math.sqrt(L.vx * L.vx + L.vy * L.vy);
-      if (speed > 16) { L.vx = L.vx / speed * 16; L.vy = L.vy / speed * 16; }
+      if (speed > L.cap) { L.vx = L.vx / speed * L.cap; L.vy = L.vy / speed * L.cap; }
 
       L.x += L.vx * dt;
       L.y += L.vy * dt;
@@ -1202,9 +1226,11 @@
       var fadeIn = Math.min(1, L.age / 1500);
       var fadeOut = Math.min(1, Math.max(0, (L.life - L.age) / 2800));
       L.el.style.opacity = (L.peak * fadeIn * fadeOut).toFixed(3);
-      /* 只有平移和淡入淡出，倾角是固定的，所以不会晃也不会抽。 */
+      /* 平移 + 缓慢呼吸 + 鼠标靠近时的轻微放大；倾角固定，不会晃也不会抽。 */
+      var breathe = 1 + Math.sin((L.age / 1000) * L.pulseRate + L.phase) * L.pulseAmp;
       L.el.style.transform = 'translate3d(' + (L.x - L.w / 2).toFixed(1) + 'px,'
-        + (L.y - L.h / 2).toFixed(1) + 'px,0) rotate(' + L.tilt.toFixed(2) + 'deg)';
+        + (L.y - L.h / 2).toFixed(1) + 'px,0) rotate(' + L.tilt.toFixed(2) + 'deg) scale('
+        + (L.scale * breathe).toFixed(3) + ')';
 
       if (L.age >= L.life) removeLetter(L);
     }
@@ -1218,6 +1244,14 @@
     document.addEventListener('pointermove', function (e) {
       pointer.x = e.clientX;
       pointer.y = e.clientY;
+      pointer.at = Date.now();
+      pointer.active = true;
+    }, { passive: true });
+    document.addEventListener('pointerdown', function (e) {
+      pointer.x = e.clientX;
+      pointer.y = e.clientY;
+      pointer.at = Date.now();
+      pointer.active = true;
     }, { passive: true });
     if (!reduceMotion) requestAnimationFrame(stepLetters);
   }
