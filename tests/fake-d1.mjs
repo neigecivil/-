@@ -43,6 +43,13 @@ export function makeD1Shim(file) {
 
 export function makeMigratedDb(file) {
   const db = makeD1Shim(file);
-  for (const m of MIGRATIONS) db.exec(m.sql);
+  for (const m of MIGRATIONS) {
+    try {
+      db.exec(m.sql);
+    } catch (e) {
+      /* 老库上重复加列是正常的（迁移脚本会说明可以忽略），别的错误照旧抛出来。 */
+      if (!/duplicate column name/i.test(String(e && e.message))) throw e;
+    }
+  }
   return db;
 }
