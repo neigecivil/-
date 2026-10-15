@@ -16,3 +16,6 @@ Thumbs.db
 assets/ai形象/
 assets/ai-faces/
 assets/ai-cast/
+# 助手启动器编译出来的东西，源码在 tools/launcher.cs
+*.exe
+app.ico
