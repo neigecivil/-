@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
+  <defs>
+    <linearGradient id="body" x1="0" y1="0" x2="0.35" y2="1">
+      <stop offset="0" stop-color="#8ea8ff"/>
+      <stop offset="0.45" stop-color="#4d6bfe"/>
+      <stop offset="1" stop-color="#26307a"/>
+    </linearGradient>
+    <linearGradient id="apron" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e7ebff"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 尾巴 -->
+  <path d="M196 118c14-16 30-22 38-19 4 12-2 28-16 40 8-2 15-1 19 3-10 12-30 15-46 6z" fill="#33417d"/>
+  <!-- 身体 -->
+  <path d="M120 34c44 0 78 30 78 70 0 30-14 50-36 62-14 8-28 11-42 11s-28-3-42-11C56 154 42 134 42 104c0-40 34-70 78-70z" fill="url(#body)"/>
+  <!-- 耳鳍 -->
+  <path d="M40 78c-14-6-24-3-28 6 8 10 22 14 34 10z" fill="#33417d"/>
+  <path d="M200 78c14-6 24-3 28 6-8 10-22 14-34 10z" fill="#33417d"/>
+  <!-- 胸鳍 -->
+  <path d="M48 128c-12 4-18 16-14 26 12 2 24-4 30-14z" fill="#3b4a92"/>
+  <path d="M192 128c12 4 18 16 14 26-12 2-24-4-30-14z" fill="#3b4a92"/>
+  <!-- 围裙 -->
+  <path d="M120 150c22 0 38 6 38 18 0 14-18 26-38 26s-38-12-38-26c0-12 16-18 38-18z" fill="url(#apron)"/>
+  <path d="M84 176c8 6 20 9 36 9s28-3 36-9" stroke="#cdd6ff" stroke-width="3" fill="none"/>
+  <!-- 小鲸鱼标记 -->
+  <path d="M108 190c0-5 4-8 9-8 4 0 7 2 8 5 1-1 2-3 3-5 1 3 0 6-2 8 1 1 2 3 2 5 0 4-4 6-10 6h-3c-5 0-7-5-7-11z" fill="#4d6bfe"/>
+  <!-- 领结 -->
+  <path d="M120 128l-16-9v18z" fill="#1f2a5c"/>
+  <path d="M120 128l16-9v18z" fill="#1f2a5c"/>
+  <circle cx="120" cy="128" r="4.5" fill="#8ea8ff"/>
+  <!-- 脸 -->
+  <ellipse cx="98" cy="98" rx="9" ry="11" fill="#ffffff"/>
+  <ellipse cx="142" cy="98" rx="9" ry="11" fill="#ffffff"/>
+  <ellipse cx="99" cy="100" rx="6" ry="7.5" fill="#1b2350"/>
+  <ellipse cx="141" cy="100" rx="6" ry="7.5" fill="#1b2350"/>
+  <circle cx="101" cy="96" r="2.4" fill="#ffffff"/>
+  <circle cx="143" cy="96" r="2.4" fill="#ffffff"/>
+  <ellipse cx="80" cy="115" rx="8" ry="5" fill="#ff9db4" opacity=".55"/>
+  <ellipse cx="160" cy="115" rx="8" ry="5" fill="#ff9db4" opacity=".55"/>
+  <path d="M112 114c4 5 12 5 16 0" stroke="#1b2350" stroke-width="3.4" stroke-linecap="round" fill="none"/>
+  <!-- 头顶小喷水 -->
+  <path d="M120 22c-3-8 1-14 6-16 1 6 4 9 8 11-5 3-10 5-14 5z" fill="#8ea8ff" opacity=".85"/>
+</svg>
