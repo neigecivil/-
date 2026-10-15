@@ -1083,8 +1083,10 @@
 
   /* ── 背景字母与点击反馈 ─────────────────────────────────── */
   var BG_LETTERS = ['hc', 'lfl', 'hh', 'cyr', 'cwn', 'cxx'];
-  /* 出现权重。cwn 抽到的概率只有别人的三成左右。 */
-  var LETTER_WEIGHT = { hc: 1.2, lfl: 1, hh: 1, cyr: 1, cwn: 0.3, cxx: 1 };
+  /* 出现权重：六个字母一视同仁。 */
+  var LETTER_WEIGHT = { hc: 1, lfl: 1, hh: 1, cyr: 1, cwn: 1, cxx: 1 };
+  /* 账号自己填的字母（默认灰那批）露脸的机会，只有装饰字母的五分之一。 */
+  var MEMBER_CHANCE = 0.2;
   var reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   /* 系统里关了动画时，不是完全不动，而是把幅度压到三成五：
      还是能看见字母在飘、也会躲鼠标，只是更安静。 */
@@ -1168,8 +1170,8 @@
     } catch (e) { /* 拿不到就先不显示，不影响主流程 */ }
   }
 
-  /* 该出现的账号字母，缺了就补一个。它们跟装饰字母走同一套参数，
-     只有颜色不同；所以也会像装饰字母一样飘一会儿就淡出，过会儿再补上来。 */
+  /* 账号字母跟装饰字母走同一套参数，只有颜色不同，也会飘一会儿就淡出。
+     区别是它们不当常驻：每轮只有五分之一的机会被补回来，所以出现得比装饰字母稀。 */
   function syncMemberLetters() {
     for (var i = 0; i < memberTexts.length; i++) {
       var text = memberTexts[i];
@@ -1178,6 +1180,7 @@
         if (memberLetters[j].text === text) { alive = true; break; }
       }
       if (alive) continue;
+      if (Math.random() > MEMBER_CHANCE) continue;
       var made = addLetter({ text: text, color: 'var(--ink-account)', kind: 'member' });
       if (made) memberLetters.push(made);
     }
