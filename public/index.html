@@ -1515,7 +1515,7 @@
   function renderUser() {
     var area = $('userArea');
     if (state.me) {
-      var adminBtn = isAdmin() ? '<button class="btn btn-sm" id="adminBtn" type="button">邀请码</button>' : '';
+      var adminBtn = isAdmin() ? '<button class="btn btn-sm" id="adminBtn" type="button">管理</button>' : '';
       var upBtn = canUpload() ? '<button class="btn btn-sm btn-solid" id="upBtn" type="button">上传文件</button>' : '';
       var lettersBtn = '';
       area.innerHTML = '<div class="who"><span class="av" style="background:' + avatarColor(state.me.username) + '">'
