@@ -48,6 +48,9 @@ function createD1Store(db) {
         const row = await one('SELECT COUNT(*) AS n FROM users', []);
         return row ? Number(row.n) : 0;
       },
+      async recent(limit) {
+        return many('SELECT username, created_at FROM users ORDER BY created_at DESC LIMIT ?', [limit]);
+      },
     },
 
     invites: {

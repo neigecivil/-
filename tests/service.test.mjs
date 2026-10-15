@@ -787,3 +787,44 @@ test('邀请码作废', async (t) => {
     assert.equal(result.ok, true);
   });
 });
+/* ── 最近注册的账号首字 ─────────────────────────────────── */
+
+test('背景字母用的账号首字', async (t) => {
+  await t.test('新建的站只有管理员，返回一个首字', async () => {
+    const ctx = setup({ bootstrapCode: 'OPEN-SESAME' });
+    await makeAdmin(ctx);
+    const letters = await ctx.svc.recentLetters();
+    assert.equal(letters.length, 1);
+    assert.equal(letters[0].letter, '管');
+  });
+
+  await t.test('新的排前面，最多给四个', async () => {
+    const ctx = setup({ bootstrapCode: 'OPEN-SESAME' });
+    const admin = await makeAdmin(ctx);
+    for (let i = 0; i < 5; i++) {
+      const inv = await ctx.svc.createInvite(admin.token, { role: 'member', maxUses: 1 });
+      await ctx.svc.register({ username: '成员' + i, password: 'harbor-lantern-77', inviteCode: inv.code });
+      ctx.clock.advance(1000);
+    }
+    const letters = await ctx.svc.recentLetters();
+    assert.equal(letters.length, 4);
+    assert.equal(letters[0].letter, '成');
+    assert.equal(letters[3].letter, '成');
+  });
+
+  await t.test('只给首字，不给完整昵称', async () => {
+    const ctx = setup({ bootstrapCode: 'OPEN-SESAME' });
+    await ctx.svc.register({ username: '小明同学', password: 'harbor-lantern-77', inviteCode: 'OPEN-SESAME' });
+    const letters = await ctx.svc.recentLetters();
+    const json = JSON.stringify(letters);
+    assert.equal(json.includes('小明同学'), false);
+    assert.equal(letters[0].letter, '小');
+  });
+
+  await t.test('英文昵称取大写首字母', async () => {
+    const ctx = setup({ bootstrapCode: 'OPEN-SESAME' });
+    await ctx.svc.register({ username: 'alice', password: 'harbor-lantern-77', inviteCode: 'OPEN-SESAME' });
+    const letters = await ctx.svc.recentLetters();
+    assert.equal(letters[0].letter, 'A');
+  });
+});

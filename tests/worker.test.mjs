@@ -521,3 +521,28 @@ test('整站用量提醒', async (t) => {
     assert.equal(typeof r.data.usage.capText, 'string');
   });
 });
+test('账号首字接口', async (t) => {
+  await t.test('没登录也能读，只有首字', async () => {
+    const { env } = setup();
+    await call(env, '/api/register', { method: 'POST', body: { username: '小明同学', password: 'harbor-lantern-77', bootstrapCode: 'OPEN-SESAME' } });
+    const r = await call(env, '/api/letters');
+    assert.equal(r.status, 200);
+    assert.equal(r.data.letters.length, 1);
+    assert.equal(r.data.letters[0].letter, '小');
+    assert.equal(JSON.stringify(r.data).includes('小明同学'), false);
+  });
+
+  await t.test('注册之后马上能多出一个', async () => {
+    const { env } = setup();
+    const { cookie } = await registerAdmin(env);
+    const before = await call(env, '/api/letters');
+    assert.equal(before.data.letters.length, 1);
+
+    const made = await call(env, '/api/admin/invites', { method: 'POST', cookie, body: { role: 'member', maxUses: 1 } });
+    await call(env, '/api/register', { method: 'POST', body: { username: '阿强', password: 'harbor-lantern-77', inviteCode: made.data.invite.code } });
+
+    const after = await call(env, '/api/letters');
+    assert.equal(after.data.letters.length, 2);
+    assert.equal(after.data.letters[0].letter, '阿');
+  });
+});

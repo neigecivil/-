@@ -107,6 +107,11 @@ async function handleApi(request, env, url) {
     const quota = await service.quotaReport(token);
     return json({ ok: true, quota });
   }
+  /* 最近注册的几个账号的首字，背景字母用它。只给首字，谁都能读。 */
+  if (section === 'letters' && method === 'GET') {
+    const letters = await service.recentLetters();
+    return json({ ok: true, letters });
+  }
   /* 整站用了多少存储。所有人（含没登录的）都能看，页面顶上那条提醒靠它。 */
   if (section === 'usage' && method === 'GET') {
     const usage = await service.usageReport();

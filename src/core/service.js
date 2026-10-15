@@ -288,6 +288,16 @@ function createService(options) {
     return { ok: true, code: normalized };
   }
 
+  /* 最近注册的几个账号，各取昵称的第一个字，给背景字母用。
+     只给一个字，不外传完整昵称。 */
+  async function recentLetters() {
+    const rows = await store.users.recent(4);
+    return rows.map((u) => ({
+      letter: String(u.username || '?').trim().charAt(0).toUpperCase() || '?',
+      at: u.created_at,
+    }));
+  }
+
   async function listUsers(sessionToken) {
     const user = await requireUser(sessionToken);
     if (!can(user.role, 'manageUsers')) throw forbidden('只有管理员能看用户列表');
@@ -496,7 +506,7 @@ function createService(options) {
 
   return {
     register, login, logout, changePassword,
-    createInvite, listInvites, revokeInvite, listUsers, quotaReport,
+    createInvite, listInvites, revokeInvite, listUsers, quotaReport, recentLetters,
     listResources, startUpload, uploadPart, completeUpload, abortUpload, usageReport,
     updateResource, deleteResource, download, preview,
     requireUser, optionalUser, publicUser,
