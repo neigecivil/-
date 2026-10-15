@@ -30,9 +30,9 @@ function createD1Store(db) {
       },
       async insert(u) {
         await run(
-          `INSERT INTO users (id, username, username_lower, password_hash, salt, role, created_at, disabled_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [u.id, u.username, u.username_lower, u.password_hash, u.salt, u.role, u.created_at, u.disabled_at || null],
+          `INSERT INTO users (id, username, username_lower, password_hash, salt, role, created_at, disabled_at, bg_letters)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [u.id, u.username, u.username_lower, u.password_hash, u.salt, u.role, u.created_at, u.disabled_at || null, u.bg_letters || null],
         );
       },
       async updatePassword(id, hash, salt) {

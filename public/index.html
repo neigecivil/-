@@ -686,6 +686,11 @@
             <label for="acctPass2">再输一次密码</label>
             <input id="acctPass2" type="password" autocomplete="new-password" placeholder="两次要一模一样" />
           </div>
+          <div class="f field-hidden" id="lettersField">
+            <label for="acctLetters">背景字母 <i>选填，注册后不能改</i></label>
+            <input id="acctLetters" maxlength="4" autocomplete="off" placeholder="1~4 个英文字母，例如 hc" />
+            <p class="file-note">只认英文字母。填了它，注册完你的字母就会飘在页面背景里。</p>
+          </div>
           <div class="f field-hidden" id="inviteField">
             <label for="acctInvite">邀请码 <i>必填</i></label>
             <input id="acctInvite" maxlength="20" autocomplete="off" placeholder="例如 ABCDE-FGHIJ" />
@@ -712,6 +717,7 @@
         <div class="tabs" id="adminTabs">
           <button type="button" data-atab="invites" class="on">邀请码</button>
           <button type="button" data-atab="resources">资源管理</button>
+          <button type="button" data-atab="letters">背景字母</button>
         </div>
 
         <div id="adminInvites">
@@ -748,7 +754,10 @@
         </div>
         </div>
 
-        <div id="adminResources" class="field-hidden">
+        <div id="adminLetters" class="field-hidden">
+          <p class="file-note" style="margin-top:0">谁注册时填了什么字母都在这里。清掉某一条，那个字母就从背景里消失。</p>
+          <ul class="invite-list" id="letterList"></ul>
+        </div>        <div id="adminResources" class="field-hidden">
           <p class="hint" id="usageLine" style="margin-bottom:8px"></p>
           <p class="hint" style="margin-bottom:12px">每一条都能看到是谁传的。点「编辑」可以改标题、换分类、调可见范围。</p>
           <ul class="invite-list" id="resourceList"></ul>
@@ -802,31 +811,6 @@
     </div>
   </div>
 
-  <div class="mask" id="lettersMask">
-    <div class="modal" style="width:min(440px,100%)" role="dialog" aria-modal="true" aria-labelledby="lettersTitle">
-      <div class="modal-head">
-        <div>
-          <h2 id="lettersTitle">我的背景字母</h2>
-          <p>写 1 到 4 个字，它会飘在页面背景里</p>
-        </div>
-        <button class="x" id="lettersClose" type="button" aria-label="关闭">✕</button>
-      </div>
-      <form id="lettersForm">
-        <div class="modal-body">
-          <div class="f">
-            <label for="myLetterInput">写点什么 <i>最多 4 个字</i></label>
-            <input id="myLetterInput" maxlength="4" placeholder="比如 hc" autocomplete="off" />
-            <p class="file-note">只能填英文字母，最多 4 个。除了颜色是固定的默认灰，其它和背景里那些字母一模一样。</p>
-          </div>
-          <p class="file-note" id="myLetterState"></p>
-        </div>
-        <div class="modal-foot">
-          <button type="button" class="btn" id="lettersClear">删掉我的字母</button>
-          <button type="submit" class="btn btn-solid" id="lettersSave">保存</button>
-        </div>
-      </form>
-    </div>
-  </div>
   <div class="mask" id="previewMask">
     <div class="modal" style="width:min(880px,100%)" role="dialog" aria-modal="true" aria-labelledby="previewTitle">
       <div class="modal-head">
@@ -1151,48 +1135,25 @@
     }
   }
 
-  /* ── 我的背景字母：读写删 ───────────────────────────────── */
-  function renderMyLetters(state0) {
-    $('myLetterState').textContent = state0 && state0.letters
-      ? '现在用的是「' + state0.letters + '」，它会出现在页面背景里。'
-      : '还没设过。保存之后就会出现在背景里。';
+  /* ── 管理员：管所有人的背景字母 ─────────────────────────── */
+  function letterRowHTML(item) {
+    return '<li>'
+      + '<span class="code">' + esc(item.letters) + '</span>'
+      + '<span class="vis">' + esc(item.username) + '</span>'
+      + '<span class="meta">' + esc(timeAgo(item.createdAt)) + '</span>'
+      + '<button class="btn btn-sm" type="button" data-clearltr="' + esc(item.userId) + '">清除</button>'
+      + '</li>';
   }
 
-  function openLetters() {
-    if (!state.me) { openAuth('login'); return; }
-    $('myLetterInput').value = '';
-    renderMyLetters(null);
-    openModal($('lettersMask'));
-    api('/api/my/letters').then(function (data) {
-      $('myLetterInput').value = data.letters || '';
-      renderMyLetters(data);
-    }).catch(function (err) { toast(err.message); });
-  }
-
-  function saveMyLetters(e) {
-    e.preventDefault();
-    var button = $('lettersSave');
-    button.disabled = true;
-    api('/api/my/letters', { method: 'POST', body: { letters: $('myLetterInput').value } })
-      .then(function (data) {
-        $('myLetterInput').value = data.letters;
-        renderMyLetters(data);
-        toast('好了，背景里有你了');
-        return loadMemberLetters();
-      })
-      .catch(function (err) { toast(err.message); })
-      .then(function () { button.disabled = false; });
-  }
-
-  function clearMyLetters() {
-    api('/api/my/letters', { method: 'DELETE' })
-      .then(function () {
-        $('myLetterInput').value = '';
-        renderMyLetters(null);
-        toast('删掉了');
-        return loadMemberLetters();
-      })
-      .catch(function (err) { toast(err.message); });
+  async function loadAdminLetters() {
+    try {
+      var data = await api('/api/admin/letters');
+      $('letterList').innerHTML = data.letters.length
+        ? data.letters.map(letterRowHTML).join('')
+        : '<li><span class="meta" style="margin-left:0">还没有人设过背景字母</span></li>';
+    } catch (err) {
+      toast(err.message);
+    }
   }
 
   /* opts 不传就是装饰字母；传了 text / color / life 就按传的来（账号首字走这条路）。 */
@@ -1556,7 +1517,7 @@
     if (state.me) {
       var adminBtn = isAdmin() ? '<button class="btn btn-sm" id="adminBtn" type="button">邀请码</button>' : '';
       var upBtn = canUpload() ? '<button class="btn btn-sm btn-solid" id="upBtn" type="button">上传文件</button>' : '';
-      var lettersBtn = '<button class="btn btn-sm" id="lettersBtn" type="button">我的字母</button>';
+      var lettersBtn = '';
       area.innerHTML = '<div class="who"><span class="av" style="background:' + avatarColor(state.me.username) + '">'
         + esc(initial(state.me.username)) + '</span><b>' + esc(state.me.username)
         + '<span class="role">' + esc(ROLE_NAME[state.me.role] || '成员') + '</span></b></div>'
@@ -2065,6 +2026,7 @@
     $('adminInvites').classList.toggle('field-hidden', tab !== 'invites');
     $('adminResources').classList.toggle('field-hidden', tab !== 'resources');
     if (tab === 'resources') { loadUsage().then(loadAdminResources); }
+    if (tab === 'letters') { loadAdminLetters(); }
   }
 
   /* 资源管理列表：每条都带上传者，方便追来源。 */
@@ -2308,6 +2270,19 @@
     var button = e.target.closest('button[data-atab]');
     if (button) switchAdminTab(button.dataset.atab);
   });
+  $('letterList').addEventListener('click', function (e) {
+    var button = e.target.closest('[data-clearltr]');
+    if (!button) return;
+    if (!confirm('清掉之后，这个账号的字母就从背景里消失了（他自己改不了）。确定吗？')) return;
+    api('/api/admin/letters/' + encodeURIComponent(button.dataset.clearltr), { method: 'DELETE' })
+      .then(function (data) {
+        toast('清掉了 ' + data.username + ' 的字母');
+        loadAdminLetters();
+        loadMemberLetters();
+      })
+      .catch(function (err) { toast(err.message); });
+  });
+
   $('resourceList').addEventListener('click', function (e) {
     var button = e.target.closest('[data-edit]');
     if (button) openEdit(button.dataset.edit);
@@ -2344,12 +2319,6 @@
   $('adminClose').addEventListener('click', function () { closeModal($('adminMask')); });
   $('adminDone').addEventListener('click', function () { closeModal($('adminMask')); });
   
-  $('lettersForm').addEventListener('submit', saveMyLetters);
-  $('lettersClear').addEventListener('click', clearMyLetters);
-  $('lettersClose').addEventListener('click', function () { closeModal($('lettersMask')); });
-  $('lettersMask').addEventListener('click', function (e) {
-    if (e.target === $('lettersMask')) closeModal($('lettersMask'));
-  });
 
   $('previewClose').addEventListener('click', closePreview);
   $('previewDone').addEventListener('click', closePreview);

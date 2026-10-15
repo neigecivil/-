@@ -112,18 +112,9 @@ async function handleApi(request, env, url) {
     const letters = await service.backgroundLetters();
     return json({ ok: true, letters });
   }
-  /* 我的背景字母：读写删，只对自己。 */
-  if (section === 'my' && id === 'letters') {
-    if (method === 'GET') return json(Object.assign({ ok: true }, await service.myLetters(token)));
-    if (method === 'POST') {
-      const body = await readJsonBody(request);
-      const result = await service.setMyLetters(token, body);
-      return json(Object.assign({ ok: true }, result));
-    }
-    if (method === 'DELETE') {
-      await service.clearMyLetters(token);
-      return json({ ok: true });
-    }
+  /* 我的背景字母：只能读。字母在注册那一刻就定了，之后改不了。 */
+  if (section === 'my' && id === 'letters' && method === 'GET') {
+    return json(Object.assign({ ok: true }, await service.myLetters(token)));
   }
   /* 整站用了多少存储。所有人（含没登录的）都能看，页面顶上那条提醒靠它。 */
   if (section === 'usage' && method === 'GET') {
@@ -229,6 +220,15 @@ async function handleApi(request, env, url) {
     return json({ ok: true, invites });
   }
 
+  /* 管理员管背景字母：列全部、清掉某一条。 */
+  if (section === 'admin' && id === 'letters' && method === 'GET') {
+    const list = await service.adminLetters(token);
+    return json({ ok: true, letters: list });
+  }
+  if (section === 'admin' && id === 'letters' && parts[3] && method === 'DELETE') {
+    const result = await service.clearUserLetters(token, parts[3]);
+    return json(Object.assign({ ok: true }, result));
+  }
   /* 作废要排在新建前面：路径都是 /api/admin/invites，靠后面那段区分。 */
   if (section === 'admin' && id === 'invites' && parts[3] === 'revoke' && method === 'POST') {
     const body = await readJsonBody(request);

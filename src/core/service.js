@@ -156,6 +156,13 @@ function createService(options) {
       throw badRequest('没找到这个邀请码，确认一下有没有抄错');
     }
 
+    /* 背景字母：只在注册这一刻能定，最多四个英文字母，之后谁都改不了（管理员可以清掉）。 */
+    const rawLetters = String(input.bgLetters == null ? '' : input.bgLetters).trim();
+    const bgLetters = cleanLetters(rawLetters);
+    if (rawLetters && !bgLetters) {
+      throw badRequest('背景字母只能填英文字母');
+    }
+
     const salt = randomBytes(16).toString('hex');
     const user = {
       id: 'u_' + uuid(),
@@ -166,6 +173,7 @@ function createService(options) {
       role,
       created_at: new Date(now()).toISOString(),
       disabled_at: null,
+      bg_letters: bgLetters || null,
     };
     await store.users.insert(user);
     if (code) await store.invites.consume(code);
@@ -296,23 +304,34 @@ function createService(options) {
       .slice(0, LETTER_LIMIT);
   }
 
+  /* 只读：看看自己注册时定的字母。改不了 —— 字母在注册那一刻就定了。 */
   async function myLetters(sessionToken) {
     const user = await requireUser(sessionToken);
-    return { letters: user.bg_letters || '', limit: LETTER_LIMIT };
+    return { letters: user.bg_letters || '', limit: LETTER_LIMIT, fixed: true };
   }
 
-  async function setMyLetters(sessionToken, input) {
+  /* 管理员能看到所有人的字母，也能把某一条清掉。 */
+  async function adminLetters(sessionToken) {
     const user = await requireUser(sessionToken);
-    const letters = cleanLetters(input && input.letters);
-    if (!letters) throw badRequest('只能填英文字母，1 到 4 个');
-    await store.users.setLetters(user.id, letters);
-    return { ok: true, letters };
+    if (!can(user.role, 'manageUsers')) throw forbidden('只有管理员能管背景字母');
+
+    const all = await store.users.all();
+    return all
+      .filter((u) => u.bg_letters)
+      .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+      .map((u) => ({ userId: u.id, username: u.username, letters: u.bg_letters, createdAt: u.created_at }));
   }
 
-  async function clearMyLetters(sessionToken) {
+  async function clearUserLetters(sessionToken, userId) {
     const user = await requireUser(sessionToken);
-    await store.users.setLetters(user.id, '');
-    return { ok: true };
+    if (!can(user.role, 'manageUsers')) throw forbidden('只有管理员能管背景字母');
+
+    const target = await store.users.byId(userId);
+    if (!target) throw notFound('没找到这个账号');
+    if (!target.bg_letters) throw badRequest('这个账号本来就没有背景字母');
+
+    await store.users.setLetters(target.id, '');
+    return { ok: true, username: target.username };
   }
 
   /* 背景里要摆的：设过字母的账号，最新的排前面，最多给 8 组。 */
@@ -530,7 +549,7 @@ function createService(options) {
   return {
     register, login, logout, changePassword,
     createInvite, listInvites, revokeInvite, listUsers, quotaReport,
-    myLetters, setMyLetters, clearMyLetters, backgroundLetters,
+    myLetters, adminLetters, clearUserLetters, backgroundLetters,
     listResources, startUpload, uploadPart, completeUpload, abortUpload, usageReport,
     updateResource, deleteResource, download, preview,
     requireUser, optionalUser, publicUser,

@@ -522,51 +522,63 @@ test('整站用量提醒', async (t) => {
   });
 });
 test('背景字母接口', async (t) => {
-  await t.test('没登录时读写都被拒', async () => {
-    const { env } = setup();
-    assert.equal((await call(env, '/api/my/letters')).status, 401);
-    assert.equal((await call(env, '/api/my/letters', { method: 'POST', body: { letters: 'hc' } })).status, 401);
-  });
-
-  await t.test('设置之后背景列表里就有，别人也能看到', async () => {
+  await t.test('注册时填了就出现在背景列表里，谁都看得到', async () => {
     const { env } = setup();
     const { cookie } = await registerAdmin(env);
-
-    const empty = await call(env, '/api/letters');
-    assert.deepEqual(empty.data.letters, []);
-
-    const saved = await call(env, '/api/my/letters', { method: 'POST', cookie, body: { letters: 'hc' } });
-    assert.equal(saved.status, 200);
-    assert.equal(saved.data.letters, 'hc');
+    const made = await call(env, '/api/admin/invites', { method: 'POST', cookie, body: { role: 'member', maxUses: 1 } });
+    await call(env, '/api/register', {
+      method: 'POST',
+      body: { username: '小明', password: 'harbor-lantern-77', inviteCode: made.data.invite.code, bgLetters: 'h c x' },
+    });
 
     const list = await call(env, '/api/letters');
-    assert.deepEqual(list.data.letters, ['hc']);
-
-    const mine = await call(env, '/api/my/letters', { cookie });
-    assert.equal(mine.data.letters, 'hc');
-    assert.equal(mine.data.limit, 4);
+    assert.deepEqual(list.data.letters, ['hcx']);
   });
 
-  await t.test('删掉之后列表里就没了', async () => {
+  await t.test('注册之后没有改自己字母的路', async () => {
     const { env } = setup();
     const { cookie } = await registerAdmin(env);
-    await call(env, '/api/my/letters', { method: 'POST', cookie, body: { letters: 'cyr' } });
-    const gone = await call(env, '/api/my/letters', { method: 'DELETE', cookie });
+    const mine = await call(env, '/api/my/letters', { cookie });
+    assert.equal(mine.status, 200);
+    assert.equal(mine.data.fixed, true);
+
+    const write = await call(env, '/api/my/letters', { method: 'POST', cookie, body: { letters: 'hc' } });
+    assert.equal(write.status, 404);
+  });
+
+  await t.test('管理员能看到全部、能清掉一条', async () => {
+    const { env } = setup();
+    const { cookie } = await registerAdmin(env);
+    await call(env, '/api/my/letters', { method: 'DELETE', cookie }).catch(() => {});
+    const made = await call(env, '/api/admin/invites', { method: 'POST', cookie, body: { role: 'member', maxUses: 1 } });
+    const joined = await call(env, '/api/register', {
+      method: 'POST',
+      body: { username: '小明', password: 'harbor-lantern-77', inviteCode: made.data.invite.code, bgLetters: 'cyr' },
+    });
+
+    const list = await call(env, '/api/admin/letters', { cookie });
+    assert.equal(list.status, 200);
+    assert.equal(list.data.letters.length, 1);
+    assert.equal(list.data.letters[0].letters, 'cyr');
+
+    const gone = await call(env, '/api/admin/letters/' + joined.data.user.id, { method: 'DELETE', cookie });
     assert.equal(gone.status, 200);
     assert.deepEqual((await call(env, '/api/letters')).data.letters, []);
   });
 
-  await t.test('五个字母只存前四个，非字母被清掉', async () => {
+  await t.test('普通成员看不了管理列表', async () => {
     const { env } = setup();
     const { cookie } = await registerAdmin(env);
-    const saved = await call(env, '/api/my/letters', { method: 'POST', cookie, body: { letters: 'ab-12cd' } });
-    assert.equal(saved.data.letters, 'abcd');
-  });
+    const made = await call(env, '/api/admin/invites', { method: 'POST', cookie, body: { role: 'member', maxUses: 1 } });
+    const joined = await call(env, '/api/register', {
+      method: 'POST',
+      body: { username: '小明', password: 'harbor-lantern-77', inviteCode: made.data.invite.code },
+    });
+    const cookies = joined.headers.getSetCookie ? joined.headers.getSetCookie() : [];
+    const m = /^sid=([^;]*)/.exec(cookies[0] || '');
+    const memberCookie = m ? 'sid=' + m[1] : '';
 
-  await t.test('没有字母就不让存', async () => {
-    const { env } = setup();
-    const { cookie } = await registerAdmin(env);
-    const bad = await call(env, '/api/my/letters', { method: 'POST', cookie, body: { letters: '1234' } });
-    assert.equal(bad.status, 400);
+    const denied = await call(env, '/api/admin/letters', { cookie: memberCookie });
+    assert.equal(denied.status, 403);
   });
 });

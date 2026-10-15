@@ -787,85 +787,110 @@ test('邀请码作废', async (t) => {
     assert.equal(result.ok, true);
   });
 });
-/* ── 账号自己的背景字母 ─────────────────────────────────── */
+/* ── 账号背景字母（注册时定，之后不能改） ───────────────── */
 
 test('账号背景字母', async (t) => {
-  async function withMember() {
-    const ctx = setup({ bootstrapCode: 'OPEN-SESAME' });
-    const admin = await makeAdmin(ctx);
-    const invite = await ctx.svc.createInvite(admin.token, { role: 'member', maxUses: 5 });
-    const member = await ctx.svc.register({ username: '小明', password: 'harbor-lantern-77', inviteCode: invite.code });
-    return { ctx, admin, member };
+  async function inviteOnce(ctx, admin, username, bgLetters) {
+    const invite = await ctx.svc.createInvite(admin.token, { role: 'member', maxUses: 1 });
+    return ctx.svc.register({
+      username,
+      password: 'harbor-lantern-77',
+      inviteCode: invite.code,
+      bgLetters,
+    });
   }
 
-  await t.test('刚注册时没有字母', async () => {
-    const { ctx, member } = await withMember();
-    const mine = await ctx.svc.myLetters(member.token);
-    assert.equal(mine.letters, '');
-    assert.equal(mine.limit, 4);
+  await t.test('注册时可以带上字母，只认英文字母', async () => {
+    const ctx = setup({ bootstrapCode: 'OPEN-SESAME' });
+    const admin = await makeAdmin(ctx);
+    const member = await inviteOnce(ctx, admin, '小明', 'h c 1 2 x');
+    assert.equal((await ctx.svc.myLetters(member.token)).letters, 'hcx');
+    assert.deepEqual(await ctx.svc.backgroundLetters(), ['hcx']);
   });
 
-  await t.test('设一次就能读到，也会出现在背景列表里', async () => {
-    const { ctx, member } = await withMember();
-    await ctx.svc.setMyLetters(member.token, { letters: 'hc' });
-    assert.equal((await ctx.svc.myLetters(member.token)).letters, 'hc');
-    assert.deepEqual(await ctx.svc.backgroundLetters(), ['hc']);
-  });
-
-  await t.test('最多四个字，多的截掉', async () => {
-    const { ctx, member } = await withMember();
-    const saved = await ctx.svc.setMyLetters(member.token, { letters: 'abcdEFG' });
-    assert.equal(saved.letters, 'abcd');
-  });
-
-  await t.test('只认英文字母，别的形式一律清掉', async () => {
-    const { ctx, member } = await withMember();
-    const saved = await ctx.svc.setMyLetters(member.token, { letters: ' h<c 123 中 ' });
-    assert.equal(saved.letters, 'hc');
-  });
-
-  await t.test('一个字母都没有（全数字或全符号）会被拒', async () => {
-    const { ctx, member } = await withMember();
-    await assert.rejects(() => ctx.svc.setMyLetters(member.token, { letters: '1234' }), /英文字母/);
-    await assert.rejects(() => ctx.svc.setMyLetters(member.token, { letters: '中文' }), /英文字母/);
-    await assert.rejects(() => ctx.svc.setMyLetters(member.token, { letters: '<>!!' }), /英文字母/);
-  });
-
-  await t.test('大小写都收，原样保存', async () => {
-    const { ctx, member } = await withMember();
-    const saved = await ctx.svc.setMyLetters(member.token, { letters: 'HcY' });
-    assert.equal(saved.letters, 'HcY');
-  });
-
-  await t.test('再设一次是覆盖，不是叠加', async () => {
-    const { ctx, member } = await withMember();
-    await ctx.svc.setMyLetters(member.token, { letters: 'hc' });
-    await ctx.svc.setMyLetters(member.token, { letters: 'cyr' });
-    assert.equal((await ctx.svc.myLetters(member.token)).letters, 'cyr');
-    assert.deepEqual(await ctx.svc.backgroundLetters(), ['cyr']);
-  });
-
-  await t.test('删掉之后背景里也没有了', async () => {
-    const { ctx, member } = await withMember();
-    await ctx.svc.setMyLetters(member.token, { letters: 'hc' });
-    await ctx.svc.clearMyLetters(member.token);
+  await t.test('不带字母就是没有，不影响注册', async () => {
+    const ctx = setup({ bootstrapCode: 'OPEN-SESAME' });
+    const admin = await makeAdmin(ctx);
+    const member = await inviteOnce(ctx, admin, '小明');
     assert.equal((await ctx.svc.myLetters(member.token)).letters, '');
     assert.deepEqual(await ctx.svc.backgroundLetters(), []);
   });
 
-  await t.test('没登录不能读写', async () => {
-    const { ctx } = await withMember();
-    await assert.rejects(() => ctx.svc.myLetters(''), /登录/);
-    await assert.rejects(() => ctx.svc.setMyLetters('', { letters: 'hc' }), /登录/);
+  await t.test('超过四个字母只留前四个', async () => {
+    const ctx = setup({ bootstrapCode: 'OPEN-SESAME' });
+    const admin = await makeAdmin(ctx);
+    await inviteOnce(ctx, admin, '小明', 'abcdefg');
+    assert.deepEqual(await ctx.svc.backgroundLetters(), ['abcd']);
   });
 
-  await t.test('各人管各人的，最多显示 8 组、新的在前', async () => {
+  await t.test('填了数字会被拒', async () => {
+    const ctx = setup({ bootstrapCode: 'OPEN-SESAME' });
+    const admin = await makeAdmin(ctx);
+    await assert.rejects(() => inviteOnce(ctx, admin, '小明', '1234'), /英文字母/);
+  });
+
+  await t.test('填了中文也会被拒', async () => {
+    const ctx = setup({ bootstrapCode: 'OPEN-SESAME' });
+    const admin = await makeAdmin(ctx);
+    await assert.rejects(() => inviteOnce(ctx, admin, '小红', '中文'), /英文字母/);
+  });
+
+  await t.test('注册之后就改不了了：没有改自己字母的入口', async () => {
+    const ctx = setup({ bootstrapCode: 'OPEN-SESAME' });
+    const admin = await makeAdmin(ctx);
+    const member = await inviteOnce(ctx, admin, '小明', 'hc');
+    assert.equal(typeof ctx.svc.setMyLetters, 'undefined');
+    assert.equal(typeof ctx.svc.clearMyLetters, 'undefined');
+    assert.equal((await ctx.svc.myLetters(member.token)).letters, 'hc');
+  });
+
+  await t.test('管理员能看到所有人的字母', async () => {
+    const ctx = setup({ bootstrapCode: 'OPEN-SESAME' });
+    const admin = await makeAdmin(ctx);
+    await inviteOnce(ctx, admin, '小明', 'hc');
+    ctx.clock.advance(1000);
+    await inviteOnce(ctx, admin, '小红', 'cyr');
+
+    const list = await ctx.svc.adminLetters(admin.token);
+    assert.equal(list.length, 2);
+    assert.equal(list[0].username, '小红');
+    assert.equal(list[0].letters, 'cyr');
+    assert.equal(list[1].username, '小明');
+  });
+
+  await t.test('管理员能清掉某一条，清完背景里就没了', async () => {
+    const ctx = setup({ bootstrapCode: 'OPEN-SESAME' });
+    const admin = await makeAdmin(ctx);
+    const member = await inviteOnce(ctx, admin, '小明', 'hc');
+    assert.deepEqual(await ctx.svc.backgroundLetters(), ['hc']);
+
+    const result = await ctx.svc.clearUserLetters(admin.token, member.user.id);
+    assert.equal(result.username, '小明');
+    assert.deepEqual(await ctx.svc.backgroundLetters(), []);
+    assert.equal((await ctx.svc.adminLetters(admin.token)).length, 0);
+  });
+
+  await t.test('普通成员看不了、也清不了别人的', async () => {
+    const ctx = setup({ bootstrapCode: 'OPEN-SESAME' });
+    const admin = await makeAdmin(ctx);
+    const a = await inviteOnce(ctx, admin, '小明', 'hc');
+    const b = await inviteOnce(ctx, admin, '小红', 'cyr');
+
+    await assert.rejects(() => ctx.svc.adminLetters(a.token), /管理员/);
+    await assert.rejects(() => ctx.svc.clearUserLetters(a.token, b.user.id), /管理员/);
+  });
+
+  await t.test('清一个没有字母的账号会说清楚', async () => {
+    const ctx = setup({ bootstrapCode: 'OPEN-SESAME' });
+    const admin = await makeAdmin(ctx);
+    await assert.rejects(() => ctx.svc.clearUserLetters(admin.token, 'u_nope'), /没找到/);
+  });
+
+  await t.test('背景最多展示 8 组，新的在前', async () => {
     const ctx = setup({ bootstrapCode: 'OPEN-SESAME' });
     const admin = await makeAdmin(ctx);
     for (let i = 0; i < 9; i++) {
-      const invite = await ctx.svc.createInvite(admin.token, { role: 'member', maxUses: 1 });
-      const who = await ctx.svc.register({ username: '成员' + i, password: 'harbor-lantern-77', inviteCode: invite.code });
-      await ctx.svc.setMyLetters(who.token, { letters: 'L' + String.fromCharCode(97 + i) });
+      await inviteOnce(ctx, admin, '成员' + i, 'L' + String.fromCharCode(97 + i));
       ctx.clock.advance(1000);
     }
     const list = await ctx.svc.backgroundLetters();
