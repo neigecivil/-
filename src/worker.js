@@ -107,10 +107,23 @@ async function handleApi(request, env, url) {
     const quota = await service.quotaReport(token);
     return json({ ok: true, quota });
   }
-  /* 最近注册的几个账号的首字，背景字母用它。只给首字，谁都能读。 */
+  /* 背景字母列表：谁都能读，只有 1~4 个字的短串，不带账号信息。 */
   if (section === 'letters' && method === 'GET') {
-    const letters = await service.recentLetters();
+    const letters = await service.backgroundLetters();
     return json({ ok: true, letters });
+  }
+  /* 我的背景字母：读写删，只对自己。 */
+  if (section === 'my' && id === 'letters') {
+    if (method === 'GET') return json(Object.assign({ ok: true }, await service.myLetters(token)));
+    if (method === 'POST') {
+      const body = await readJsonBody(request);
+      const result = await service.setMyLetters(token, body);
+      return json(Object.assign({ ok: true }, result));
+    }
+    if (method === 'DELETE') {
+      await service.clearMyLetters(token);
+      return json({ ok: true });
+    }
   }
   /* 整站用了多少存储。所有人（含没登录的）都能看，页面顶上那条提醒靠它。 */
   if (section === 'usage' && method === 'GET') {

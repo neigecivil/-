@@ -35,9 +35,18 @@ function createMemoryStore() {
       },
       async all() { return clone(users); },
       async count() { return users.length; },
-      /* 最近注册的几个，新的在前。 */
-      async recent(limit) {
-        return clone(users.slice().sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))).slice(0, limit));
+      async setLetters(id, letters) {
+        const u = users.find((x) => x.id === id);
+        if (u) u.bg_letters = letters;
+      },
+      /* 设过背景字母的账号，新的在前。 */
+      async withLetters(limit) {
+        return clone(
+          users.filter((u) => u.bg_letters)
+            .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+            .slice(0, limit)
+            .map((u) => ({ username: u.username, bg_letters: u.bg_letters })),
+        );
       },
     },
 

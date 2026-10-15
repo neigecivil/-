@@ -802,6 +802,31 @@
     </div>
   </div>
 
+  <div class="mask" id="lettersMask">
+    <div class="modal" style="width:min(440px,100%)" role="dialog" aria-modal="true" aria-labelledby="lettersTitle">
+      <div class="modal-head">
+        <div>
+          <h2 id="lettersTitle">我的背景字母</h2>
+          <p>写 1 到 4 个字，它会飘在页面背景里</p>
+        </div>
+        <button class="x" id="lettersClose" type="button" aria-label="关闭">✕</button>
+      </div>
+      <form id="lettersForm">
+        <div class="modal-body">
+          <div class="f">
+            <label for="myLetterInput">写点什么 <i>最多 4 个字</i></label>
+            <input id="myLetterInput" maxlength="4" placeholder="比如你的名字缩写" autocomplete="off" />
+            <p class="file-note">只认中文、字母、数字。颜色固定用默认灰，和背景里那些彩色字母区分开。</p>
+          </div>
+          <p class="file-note" id="myLetterState"></p>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn" id="lettersClear">删掉我的字母</button>
+          <button type="submit" class="btn btn-solid" id="lettersSave">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
   <div class="mask" id="previewMask">
     <div class="modal" style="width:min(880px,100%)" role="dialog" aria-modal="true" aria-labelledby="previewTitle">
       <div class="modal-head">

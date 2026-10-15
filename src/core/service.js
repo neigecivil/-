@@ -20,6 +20,7 @@ const SESSION_TTL_MS = 30 * 24 * 3600 * 1000;
 const USERNAME_RE = /^[\w\u4e00-\u9fa5-]{2,20}$/;
 const VIEWER_ANONYMOUS = 'anonymous';
 const CODE_BYTES = 16;   // 邀请码取模用，给足随机量
+const LETTER_LIMIT = 4;  // 背景字母最多几个字
 
 function hashPassword(password, salt) {
   return crypto.scryptSync(password, salt, 64).toString('hex');
@@ -288,14 +289,38 @@ function createService(options) {
     return { ok: true, code: normalized };
   }
 
-  /* 最近注册的几个账号，各取昵称的前四个字，给背景字母用。
-     每个账号只在这一处出现一次，最多四个字，不外传完整昵称。 */
-  async function recentLetters() {
-    const rows = await store.users.recent(4);
-    return rows.map((u) => ({
-      letter: String(u.username || '?').trim().slice(0, 4) || '?',
-      at: u.created_at,
-    }));
+  /* 背景字母：账号自己挑的那串字。
+     只允许中文、字母、数字、下划线，最多四个字。 */
+  function cleanLetters(raw) {
+    return String(raw == null ? '' : raw)
+      .replace(/\s+/g, '')
+      .replace(/[^\w\u4e00-\u9fa5]/g, '')
+      .slice(0, LETTER_LIMIT);
+  }
+
+  async function myLetters(sessionToken) {
+    const user = await requireUser(sessionToken);
+    return { letters: user.bg_letters || '', limit: LETTER_LIMIT };
+  }
+
+  async function setMyLetters(sessionToken, input) {
+    const user = await requireUser(sessionToken);
+    const letters = cleanLetters(input && input.letters);
+    if (!letters) throw badRequest('写 1 到 4 个字吧，中文、字母、数字都行');
+    await store.users.setLetters(user.id, letters);
+    return { ok: true, letters };
+  }
+
+  async function clearMyLetters(sessionToken) {
+    const user = await requireUser(sessionToken);
+    await store.users.setLetters(user.id, '');
+    return { ok: true };
+  }
+
+  /* 背景里要摆的：设过字母的账号，最新的排前面，最多给 8 组。 */
+  async function backgroundLetters() {
+    const rows = await store.users.withLetters(8);
+    return rows.map((u) => u.bg_letters).filter(Boolean);
   }
 
   async function listUsers(sessionToken) {
@@ -506,7 +531,8 @@ function createService(options) {
 
   return {
     register, login, logout, changePassword,
-    createInvite, listInvites, revokeInvite, listUsers, quotaReport, recentLetters,
+    createInvite, listInvites, revokeInvite, listUsers, quotaReport,
+    myLetters, setMyLetters, clearMyLetters, backgroundLetters,
     listResources, startUpload, uploadPart, completeUpload, abortUpload, usageReport,
     updateResource, deleteResource, download, preview,
     requireUser, optionalUser, publicUser,

@@ -1,0 +1,274 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="x-ua-compatible" content="ie=edge">
+<title>资源分享站助手</title>
+<hta:application
+  id="app"
+  applicationname="资源分享站助手"
+  border="thin"
+  caption="yes"
+  maximizebutton="no"
+  minimizebutton="yes"
+  scroll="auto"
+  singleinstance="yes"
+  showintaskbar="yes"
+  sysmenu="yes"
+  windowstate="normal" />
+<style>
+  :root {
+    --blue: #4d6bfe;
+    --blue-dark: #3b57e0;
+    --blue-soft: #eef1ff;
+    --ink: #1b1b1f;
+    --muted: #6b7280;
+    --line: #e6e8f0;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; width: 720px; min-height: 560px;
+    font-family: "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif;
+    font-size: 14px; color: var(--ink); background: #f6f7fb;
+    -webkit-font-smoothing: antialiased;
+  }
+  header {
+    display: flex; align-items: center; gap: 14px;
+    padding: 18px 22px; background: #fff; border-bottom: 1px solid var(--line);
+  }
+  .whale { color: var(--blue); flex: 0 0 auto; }
+  header h1 { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: .02em; }
+  header p { margin: 3px 0 0; font-size: 12.5px; color: var(--muted); }
+  .grow { flex: 1 1 auto; }
+  .status {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 11px; border-radius: 999px; font-size: 12.5px;
+    background: var(--blue-soft); color: var(--blue-dark); white-space: nowrap;
+  }
+  .status.off { background: #f2f3f6; color: var(--muted); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  main { padding: 18px 22px 24px; }
+  h2 {
+    margin: 0 0 10px; font-size: 12.5px; font-weight: 700;
+    color: var(--muted); letter-spacing: .06em;
+  }
+  .grid { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
+  button {
+    font-family: inherit; font-size: 13.5px; cursor: pointer;
+    border: 1px solid var(--line); background: #fff; color: var(--ink);
+    border-radius: 12px; padding: 11px 16px;
+    transition: border-color .15s, background .15s, transform .1s, color .15s;
+  }
+  button:hover { border-color: var(--blue); color: var(--blue-dark); }
+  button:active { transform: scale(.98); }
+  button.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
+  button.primary:hover { background: var(--blue-dark); border-color: var(--blue-dark); color: #fff; }
+  button.ghost { background: transparent; border-color: transparent; color: var(--muted); }
+  button.ghost:hover { background: #fff; color: var(--blue-dark); }
+  button.danger { color: #b4342a; border-color: #f0dbd9; background: #fff; }
+  button.danger:hover { border-color: #d2695e; color: #b4342a; }
+  .programs { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
+  .program {
+    display: flex; align-items: center; gap: 12px;
+    background: #fff; border: 1px solid var(--line); border-radius: 12px;
+    padding: 11px 14px;
+  }
+  .program b { font-weight: 600; }
+  .program .path { color: var(--muted); font-size: 12px; }
+  .program .spacer { flex: 1 1 auto; }
+  .empty {
+    padding: 14px; border: 1px dashed var(--line); border-radius: 12px;
+    color: var(--muted); font-size: 13px; background: #fff;
+  }
+  footer {
+    display: flex; align-items: center; gap: 10px;
+    padding: 14px 22px 18px; border-top: 1px solid var(--line); background: #fff;
+  }
+  .hint { color: var(--muted); font-size: 12px; flex: 1 1 auto; }
+</style>
+</head>
+<body>
+  <header>
+    <svg class="whale" width="58" height="44" viewBox="0 0 72 56" aria-hidden="true">
+      <path d="M7 31c0-12 12-21 27-21 11 0 21 5 25 13 2-2 5-6 6-10 3 5 3 12-1 17 3 3 4 7 4 10 0 8-9 13-24 13H29C16 53 7 44 7 31Z" fill="currentColor"/>
+      <path d="M63 22c4-4 8-5 10-4-1 5-4 9-8 11Z" fill="currentColor" opacity=".72"/>
+      <circle cx="29" cy="26" r="3.6" fill="#fff"/>
+      <path d="M23 37c4 3 12 3 16-1" stroke="#fff" stroke-width="2.6" stroke-linecap="round" fill="none"/>
+    </svg>
+    <div>
+      <h1>资源分享站助手</h1>
+      <p>本地预览、线上站点、还有那些启动脚本，都收在这里</p>
+    </div>
+    <div class="grow"></div>
+    <span class="status off" id="status"><span class="dot"></span><span id="statusText">检查中…</span></span>
+  </header>
+
+  <main>
+    <h2>快捷入口</h2>
+    <div class="grid">
+      <button class="primary" id="btnLocal">打开本地预览</button>
+      <button id="btnOnline">打开线上网站</button>
+      <button id="btnProject">项目文件夹</button>
+      <button id="btnData">数据文件夹</button>
+      <button id="btnGithub">上传到 GitHub</button>
+      <button id="btnCf">Cloudflare 后台</button>
+      <button class="ghost" id="btnRefresh">刷新状态</button>
+    </div>
+
+    <h2>启动脚本（自动收录）</h2>
+    <div class="programs" id="programs"></div>
+  </main>
+
+  <footer>
+    <span class="hint" id="hint">新写的 .cmd / .bat 放进项目文件夹，这里会自动出现</span>
+    <button class="danger" id="btnReset">清空本地数据</button>
+  </footer>
+
+<script>
+  var fso = new ActiveXObject('Scripting.FileSystemObject');
+  var sh = new ActiveXObject('WScript.Shell');
+
+  /* 自己的位置：助手放在项目根目录，.devdata 和启动脚本都在旁边。 */
+  var htaPath = decodeURIComponent(location.pathname || '').replace(/^\//, '').replace(/\//g, '\\');
+  var HERE = fso.GetParentFolderName(htaPath);
+  var PARENT = fso.GetParentFolderName(HERE);
+
+  /* 自动收录的范围：新脚本放进这两个目录里的任意一个都会被列出来。 */
+  var SCAN_DIRS = [HERE, fso.BuildPath(PARENT, '资源分享站')];
+  var EXTRA_DIRS = ['', 'tools', 'bin', 'scripts'];
+
+  function runFile(path, visible) {
+    try { sh.Run('"' + path + '"', visible === false ? 0 : 1, false); }
+    catch (e) { alert('打不开：' + path + '\n' + e.message); }
+  }
+  function openUrl(url) { runFile(url, true); }
+  function openFolder(path) {
+    if (!fso.FolderExists(path)) { alert('这个文件夹还没有：' + path); return; }
+    sh.Run('explorer.exe "' + path + '"', 1, false);
+  }
+
+  /* 扫两个目录（含常见的子目录），把 .cmd / .bat 收进来。 */
+  function scanScripts() {
+    var found = [], seen = {};
+    for (var i = 0; i < SCAN_DIRS.length; i++) {
+      for (var j = 0; j < EXTRA_DIRS.length; j++) {
+        var dir = EXTRA_DIRS[j] ? fso.BuildPath(SCAN_DIRS[i], EXTRA_DIRS[j]) : SCAN_DIRS[i];
+        if (!fso.FolderExists(dir)) continue;
+        var e = new Enumerator(fso.GetFolder(dir).Files);
+        for (; !e.atEnd(); e.moveNext()) {
+          var file = e.item();
+          var lower = file.Name.toLowerCase();
+          if (lower.slice(-4) !== '.cmd' && lower.slice(-4) !== '.bat') continue;
+          if (seen[file.Path.toLowerCase()]) continue;
+          seen[file.Path.toLowerCase()] = 1;
+          found.push({ name: file.Name, path: file.Path, dir: dir });
+        }
+      }
+    }
+    found.sort(function (a, b) { return a.name.localeCompare(b.name, 'zh-CN'); });
+    return found;
+  }
+
+  function renderScripts() {
+    var list = scanScripts();
+    var box = document.getElementById('programs');
+    if (!list.length) {
+      box.innerHTML = '<div class="empty">还没找到启动脚本。把 .cmd 或 .bat 放进项目文件夹，点下面的「刷新状态」就会出现在这里。</div>';
+      return;
+    }
+    var html = '';
+    for (var i = 0; i < list.length; i++) {
+      var item = list[i];
+      var label = item.name.replace(/\.(cmd|bat)$/i, '');
+      html += '<div class="program">'
+        + '<div><b>' + escapeHtml(label) + '</b><div class="path">' + escapeHtml(shortPath(item.dir)) + '</div></div>'
+        + '<div class="spacer"></div>'
+        + '<button data-run="' + i + '">运行</button>'
+        + '<button class="ghost" data-show="' + i + '">定位</button>'
+        + '</div>';
+    }
+    box.innerHTML = html;
+    var buttons = box.getElementsByTagName('button');
+    for (var k = 0; k < buttons.length; k++) {
+      var b = buttons[k];
+      var idx = Number(b.getAttribute('data-run') !== null ? b.getAttribute('data-run') : b.getAttribute('data-show'));
+      var isRun = b.getAttribute('data-run') !== null;
+      (function (item, isRun) {
+        b.onclick = function () {
+          if (isRun) runFile(item.path, true);
+          else sh.Run('explorer.exe /select,"' + item.path + '"', 1, false);
+        };
+      })(list[idx], isRun);
+    }
+  }
+
+  function shortPath(dir) {
+    return dir.replace(PARENT + '\\', '');
+  }
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
+
+  /* 本地服务在不在：打得通就直接开浏览器，打不通就先拉起来。 */
+  function checkLocal(callback) {
+    var xhr = new XMLHttpRequest();
+    var done = false;
+    function finish(ok) { if (done) return; done = true; if (callback) callback(ok); }
+    try {
+      xhr.open('GET', 'http://127.0.0.1:4330/api/usage', true);
+      xhr.onreadystatechange = function () { if (xhr.readyState === 4) finish(xhr.status === 200); };
+      xhr.send();
+      window.setTimeout(function () { finish(false); }, 1500);
+    } catch (e) { finish(false); }
+  }
+
+  function setStatus(ok) {
+    var box = document.getElementById('status');
+    box.className = 'status' + (ok ? '' : ' off');
+    document.getElementById('statusText').innerHTML = ok ? '本地服务运行中' : '本地服务未启动';
+  }
+
+  function refresh() {
+    renderScripts();
+    setStatus(false);
+    checkLocal(function (ok) { setStatus(ok); });
+  }
+
+  function openLocal() {
+    checkLocal(function (ok) {
+      if (ok) { openUrl('http://127.0.0.1:4330/'); return; }
+      var list = scanScripts();
+      for (var i = 0; i < list.length; i++) {
+        if (/本地预览/.test(list[i].name)) { runFile(list[i].path, true); return; }
+      }
+      var fallback = fso.BuildPath(HERE, '启动本地预览.cmd');
+      if (fso.FileExists(fallback)) runFile(fallback, true);
+      else alert('没找到启动脚本，也没有本地服务在跑。');
+    });
+  }
+
+  document.getElementById('btnLocal').onclick = openLocal;
+  document.getElementById('btnOnline').onclick = function () { openUrl('https://chchcl.date'); };
+  document.getElementById('btnProject').onclick = function () { openFolder(HERE); };
+  document.getElementById('btnData').onclick = function () { openFolder(fso.BuildPath(HERE, '.devdata')); };
+  document.getElementById('btnGithub').onclick = function () { openUrl('https://github.com/neigecivil/-/upload'); };
+  document.getElementById('btnCf').onclick = function () { openUrl('https://dash.cloudflare.com'); };
+  document.getElementById('btnRefresh').onclick = refresh;
+  document.getElementById('btnReset').onclick = function () {
+    var dir = fso.BuildPath(HERE, '.devdata');
+    if (!fso.FolderExists(dir)) { alert('本来就没有本地数据文件夹，不用清。'); return; }
+    if (!confirm('会把 .devdata 里的账号和文件全删掉（只影响本地预览，线上不受影响）。确定吗？')) return;
+    try {
+      fso.DeleteFolder(dir, true);
+      alert('清好了。下次启动本地预览就是全新的，注册邀请码填 LOCAL-DEV-CODE。');
+      refresh();
+    } catch (e) { alert('删不掉：' + e.message + '\n可能是本地预览还开着，先去关掉那个黑窗口。'); }
+  };
+
+  refresh();
+</script>
+</body>
+</html>

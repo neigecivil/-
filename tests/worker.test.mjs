@@ -521,28 +521,45 @@ test('整站用量提醒', async (t) => {
     assert.equal(typeof r.data.usage.capText, 'string');
   });
 });
-test('账号首字接口', async (t) => {
-  await t.test('没登录也能读，长名字会被截到四个字', async () => {
+test('背景字母接口', async (t) => {
+  await t.test('没登录时读写都被拒', async () => {
     const { env } = setup();
-    await call(env, '/api/register', { method: 'POST', body: { username: '小明同学爱看书', password: 'harbor-lantern-77', bootstrapCode: 'OPEN-SESAME' } });
-    const r = await call(env, '/api/letters');
-    assert.equal(r.status, 200);
-    assert.equal(r.data.letters.length, 1);
-    assert.equal(r.data.letters[0].letter, '小明同学');
-    assert.equal(JSON.stringify(r.data).includes('小明同学爱看书'), false);
+    assert.equal((await call(env, '/api/my/letters')).status, 401);
+    assert.equal((await call(env, '/api/my/letters', { method: 'POST', body: { letters: 'hc' } })).status, 401);
   });
 
-  await t.test('注册之后马上能多出一个', async () => {
+  await t.test('设置之后背景列表里就有，别人也能看到', async () => {
     const { env } = setup();
     const { cookie } = await registerAdmin(env);
-    const before = await call(env, '/api/letters');
-    assert.equal(before.data.letters.length, 1);
 
-    const made = await call(env, '/api/admin/invites', { method: 'POST', cookie, body: { role: 'member', maxUses: 1 } });
-    await call(env, '/api/register', { method: 'POST', body: { username: '阿强', password: 'harbor-lantern-77', inviteCode: made.data.invite.code } });
+    const empty = await call(env, '/api/letters');
+    assert.deepEqual(empty.data.letters, []);
 
-    const after = await call(env, '/api/letters');
-    assert.equal(after.data.letters.length, 2);
-    assert.equal(after.data.letters[0].letter, '阿强');
+    const saved = await call(env, '/api/my/letters', { method: 'POST', cookie, body: { letters: 'hc' } });
+    assert.equal(saved.status, 200);
+    assert.equal(saved.data.letters, 'hc');
+
+    const list = await call(env, '/api/letters');
+    assert.deepEqual(list.data.letters, ['hc']);
+
+    const mine = await call(env, '/api/my/letters', { cookie });
+    assert.equal(mine.data.letters, 'hc');
+    assert.equal(mine.data.limit, 4);
+  });
+
+  await t.test('删掉之后列表里就没了', async () => {
+    const { env } = setup();
+    const { cookie } = await registerAdmin(env);
+    await call(env, '/api/my/letters', { method: 'POST', cookie, body: { letters: 'cyr' } });
+    const gone = await call(env, '/api/my/letters', { method: 'DELETE', cookie });
+    assert.equal(gone.status, 200);
+    assert.deepEqual((await call(env, '/api/letters')).data.letters, []);
+  });
+
+  await t.test('五个字只存前四个', async () => {
+    const { env } = setup();
+    const { cookie } = await registerAdmin(env);
+    const saved = await call(env, '/api/my/letters', { method: 'POST', cookie, body: { letters: 'abcde' } });
+    assert.equal(saved.data.letters, 'abcd');
   });
 });

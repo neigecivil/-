@@ -48,8 +48,14 @@ function createD1Store(db) {
         const row = await one('SELECT COUNT(*) AS n FROM users', []);
         return row ? Number(row.n) : 0;
       },
-      async recent(limit) {
-        return many('SELECT username, created_at FROM users ORDER BY created_at DESC LIMIT ?', [limit]);
+      async setLetters(id, letters) {
+        await run('UPDATE users SET bg_letters = ? WHERE id = ?', [letters || null, id]);
+      },
+      async withLetters(limit) {
+        return many(
+          "SELECT username, bg_letters FROM users WHERE bg_letters IS NOT NULL AND bg_letters <> '' ORDER BY created_at DESC LIMIT ?",
+          [limit],
+        );
       },
     },
 
