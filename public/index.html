@@ -815,8 +815,8 @@
         <div class="modal-body">
           <div class="f">
             <label for="myLetterInput">写点什么 <i>最多 4 个字</i></label>
-            <input id="myLetterInput" maxlength="4" placeholder="比如你的名字缩写" autocomplete="off" />
-            <p class="file-note">只认中文、字母、数字。颜色固定用默认灰，和背景里那些彩色字母区分开。</p>
+            <input id="myLetterInput" maxlength="4" placeholder="比如 hc" autocomplete="off" />
+            <p class="file-note">只能填英文字母，最多 4 个。除了颜色是固定的默认灰，其它和背景里那些字母一模一样。</p>
           </div>
           <p class="file-note" id="myLetterState"></p>
         </div>
@@ -1082,6 +1082,7 @@
   var letters = [];
   /* 账号首字那一组：最多四个，用默认灰，不参与"过期消失"。 */
   var memberLetters = [];
+  var memberTexts = [];
   var pointer = { x: -9999, y: -9999, at: 0, active: false, energy: 0, vx: 0, vy: 0 };
   var lastFrame = 0;
 
@@ -1130,14 +1131,24 @@
   async function loadMemberLetters() {
     try {
       var data = await api('/api/letters');
-      var list = (data.letters || []).slice(0, 8);
-      while (memberLetters.length) removeLetter(memberLetters[0]);
-      for (var i = 0; i < list.length; i++) {
-        var made = addLetter({ text: String(list[i]), color: 'var(--ink-account)', kind: 'member', life: Infinity });
-        if (!made) break;
-        memberLetters.push(made);
-      }
+      memberTexts = (data.letters || []).slice(0, 8).map(function (x) { return String(x); });
+      syncMemberLetters();
     } catch (e) { /* 拿不到就先不显示，不影响主流程 */ }
+  }
+
+  /* 该出现的账号字母，缺了就补一个。它们跟装饰字母走同一套参数，
+     只有颜色不同；所以也会像装饰字母一样飘一会儿就淡出，过会儿再补上来。 */
+  function syncMemberLetters() {
+    for (var i = 0; i < memberTexts.length; i++) {
+      var text = memberTexts[i];
+      var alive = false;
+      for (var j = 0; j < memberLetters.length; j++) {
+        if (memberLetters[j].text === text) { alive = true; break; }
+      }
+      if (alive) continue;
+      var made = addLetter({ text: text, color: 'var(--ink-account)', kind: 'member' });
+      if (made) memberLetters.push(made);
+    }
   }
 
   /* ── 我的背景字母：读写删 ───────────────────────────────── */
@@ -1245,14 +1256,14 @@
       leanTarget: 0,
       leanMouse: 0,
       /* 出场方式：淡入、从下面浮上来、从小涨开。 */
-      enter: isMember ? 'fade' : pick(['fade', 'rise', 'grow']),
+      enter: pick(['fade', 'rise', 'grow']),
       enterMs: rand(800, 1400),
       /* 约三成是"过路的"：认准一个方向慢慢穿过整页，比原地打转显眼。 */
-      mode: (!isMember && Math.random() < 0.42) ? 'travel' : 'drift',
+      mode: Math.random() < 0.42 ? 'travel' : 'drift',
       dir: rand(0, Math.PI * 2),
       cap: 0,
       boost: 0,
-      peak: isMember ? 0.5 : rand(0.34, 0.56), life: o.life || rand(18000, 32000), age: 0,
+      peak: rand(0.34, 0.56), life: o.life || rand(18000, 32000), age: 0,
     };
     letter.cap = letter.mode === 'travel' ? rand(26, 42) : rand(16, 30);
     if (letter.mode === 'travel') {
@@ -1260,6 +1271,7 @@
       letter.vy = Math.sin(letter.dir) * letter.cap * 0.6;
     }
     letters.push(letter);
+    letter.text = text;
     letter.kind = isMember ? 'member' : 'deco';
     return letter;
 
@@ -1463,6 +1475,8 @@
       addLetter();
       if (Math.random() < 0.5) addLetter();
     }, 1800);
+    /* 账号字母淡出之后，隔一会儿补回来。 */
+    setInterval(syncMemberLetters, 5000);
     document.addEventListener('pointermove', function (e) {
       var nowAt = Date.now();
       var moved = Math.sqrt(Math.pow(e.clientX - pointer.x, 2) + Math.pow(e.clientY - pointer.y, 2));

@@ -818,15 +818,23 @@ test('账号背景字母', async (t) => {
     assert.equal(saved.letters, 'abcd');
   });
 
-  await t.test('空格和乱七八糟的符号会被清掉', async () => {
+  await t.test('只认英文字母，别的形式一律清掉', async () => {
     const { ctx, member } = await withMember();
-    const saved = await ctx.svc.setMyLetters(member.token, { letters: ' h<c > ' });
+    const saved = await ctx.svc.setMyLetters(member.token, { letters: ' h<c 123 中 ' });
     assert.equal(saved.letters, 'hc');
   });
 
-  await t.test('全是符号就等于没写，会被拒', async () => {
+  await t.test('一个字母都没有（全数字或全符号）会被拒', async () => {
     const { ctx, member } = await withMember();
-    await assert.rejects(() => ctx.svc.setMyLetters(member.token, { letters: '<>!!' }), /1 到 4 个字/);
+    await assert.rejects(() => ctx.svc.setMyLetters(member.token, { letters: '1234' }), /英文字母/);
+    await assert.rejects(() => ctx.svc.setMyLetters(member.token, { letters: '中文' }), /英文字母/);
+    await assert.rejects(() => ctx.svc.setMyLetters(member.token, { letters: '<>!!' }), /英文字母/);
+  });
+
+  await t.test('大小写都收，原样保存', async () => {
+    const { ctx, member } = await withMember();
+    const saved = await ctx.svc.setMyLetters(member.token, { letters: 'HcY' });
+    assert.equal(saved.letters, 'HcY');
   });
 
   await t.test('再设一次是覆盖，不是叠加', async () => {
@@ -857,12 +865,12 @@ test('账号背景字母', async (t) => {
     for (let i = 0; i < 9; i++) {
       const invite = await ctx.svc.createInvite(admin.token, { role: 'member', maxUses: 1 });
       const who = await ctx.svc.register({ username: '成员' + i, password: 'harbor-lantern-77', inviteCode: invite.code });
-      await ctx.svc.setMyLetters(who.token, { letters: 'L' + i });
+      await ctx.svc.setMyLetters(who.token, { letters: 'L' + String.fromCharCode(97 + i) });
       ctx.clock.advance(1000);
     }
     const list = await ctx.svc.backgroundLetters();
     assert.equal(list.length, 8);
-    assert.equal(list[0], 'L8');
-    assert.equal(list.includes('L0'), false);
+    assert.equal(list[0], 'Li');
+    assert.equal(list.includes('La'), false);
   });
 });

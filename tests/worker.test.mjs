@@ -556,10 +556,17 @@ test('背景字母接口', async (t) => {
     assert.deepEqual((await call(env, '/api/letters')).data.letters, []);
   });
 
-  await t.test('五个字只存前四个', async () => {
+  await t.test('五个字母只存前四个，非字母被清掉', async () => {
     const { env } = setup();
     const { cookie } = await registerAdmin(env);
-    const saved = await call(env, '/api/my/letters', { method: 'POST', cookie, body: { letters: 'abcde' } });
+    const saved = await call(env, '/api/my/letters', { method: 'POST', cookie, body: { letters: 'ab-12cd' } });
     assert.equal(saved.data.letters, 'abcd');
+  });
+
+  await t.test('没有字母就不让存', async () => {
+    const { env } = setup();
+    const { cookie } = await registerAdmin(env);
+    const bad = await call(env, '/api/my/letters', { method: 'POST', cookie, body: { letters: '1234' } });
+    assert.equal(bad.status, 400);
   });
 });

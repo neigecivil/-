@@ -289,12 +289,10 @@ function createService(options) {
     return { ok: true, code: normalized };
   }
 
-  /* 背景字母：账号自己挑的那串字。
-     只允许中文、字母、数字、下划线，最多四个字。 */
+  /* 背景字母：只收英文字母，别的形式一律不要，最多四个。 */
   function cleanLetters(raw) {
     return String(raw == null ? '' : raw)
-      .replace(/\s+/g, '')
-      .replace(/[^\w\u4e00-\u9fa5]/g, '')
+      .replace(/[^A-Za-z]/g, '')
       .slice(0, LETTER_LIMIT);
   }
 
@@ -306,7 +304,7 @@ function createService(options) {
   async function setMyLetters(sessionToken, input) {
     const user = await requireUser(sessionToken);
     const letters = cleanLetters(input && input.letters);
-    if (!letters) throw badRequest('写 1 到 4 个字吧，中文、字母、数字都行');
+    if (!letters) throw badRequest('只能填英文字母，1 到 4 个');
     await store.users.setLetters(user.id, letters);
     return { ok: true, letters };
   }
