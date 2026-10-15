@@ -89,6 +89,9 @@ set STORAGE_LIMIT_MB=1 && set STORAGE_WARN_PERCENT=1 && node tools/dev.mjs
    - 注意：开通 R2 需要先绑定支付方式。免费额度内不会扣费（每月 10GB 存储、
      100 万次写入、1000 万次读取，流量免费），但**不想绑卡就用下面的 KV 方案**
 2. 同样在 **Storage & databases** 里选 **D1**，创建一个数据库，名字填 `reshub`
+> **已经部署过、现在要更新的话**：去 D1 的 Console 再跑一次
+> `migrations/0002_user_letters.sql`（给 users 加一列存背景字母）。
+> 如果提示 `duplicate column name`，说明已经加过了，忽略即可。
 3. 进入刚建好的 D1，打开 **Console**，把 `migrations/0001_init.sql` 的
    全部内容粘进去执行
 
