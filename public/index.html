@@ -1125,18 +1125,63 @@
     if (letter.el.parentNode) letter.el.parentNode.removeChild(letter.el);
   }
 
-  /* 拉最近注册的账号，各摆一串名字（最多四个字）：最多四组，固定默认灰，不会自己消失。 */
+  /* 拉大家自己设的背景字母（最新在前，最多 8 组）。
+     固定用默认灰，和那些彩色装饰字母区分开；这种不会自己消失。 */
   async function loadMemberLetters() {
     try {
       var data = await api('/api/letters');
-      var list = (data.letters || []).slice(0, 4);
+      var list = (data.letters || []).slice(0, 8);
       while (memberLetters.length) removeLetter(memberLetters[0]);
       for (var i = 0; i < list.length; i++) {
-        var made = addLetter({ text: list[i].letter, color: 'var(--ink-account)', kind: 'member', life: Infinity });
+        var made = addLetter({ text: String(list[i]), color: 'var(--ink-account)', kind: 'member', life: Infinity });
         if (!made) break;
         memberLetters.push(made);
       }
     } catch (e) { /* 拿不到就先不显示，不影响主流程 */ }
+  }
+
+  /* ── 我的背景字母：读写删 ───────────────────────────────── */
+  function renderMyLetters(state0) {
+    $('myLetterState').textContent = state0 && state0.letters
+      ? '现在用的是「' + state0.letters + '」，它会出现在页面背景里。'
+      : '还没设过。保存之后就会出现在背景里。';
+  }
+
+  function openLetters() {
+    if (!state.me) { openAuth('login'); return; }
+    $('myLetterInput').value = '';
+    renderMyLetters(null);
+    openModal($('lettersMask'));
+    api('/api/my/letters').then(function (data) {
+      $('myLetterInput').value = data.letters || '';
+      renderMyLetters(data);
+    }).catch(function (err) { toast(err.message); });
+  }
+
+  function saveMyLetters(e) {
+    e.preventDefault();
+    var button = $('lettersSave');
+    button.disabled = true;
+    api('/api/my/letters', { method: 'POST', body: { letters: $('myLetterInput').value } })
+      .then(function (data) {
+        $('myLetterInput').value = data.letters;
+        renderMyLetters(data);
+        toast('好了，背景里有你了');
+        return loadMemberLetters();
+      })
+      .catch(function (err) { toast(err.message); })
+      .then(function () { button.disabled = false; });
+  }
+
+  function clearMyLetters() {
+    api('/api/my/letters', { method: 'DELETE' })
+      .then(function () {
+        $('myLetterInput').value = '';
+        renderMyLetters(null);
+        toast('删掉了');
+        return loadMemberLetters();
+      })
+      .catch(function (err) { toast(err.message); });
   }
 
   /* opts 不传就是装饰字母；传了 text / color / life 就按传的来（账号首字走这条路）。 */
@@ -1497,10 +1542,11 @@
     if (state.me) {
       var adminBtn = isAdmin() ? '<button class="btn btn-sm" id="adminBtn" type="button">邀请码</button>' : '';
       var upBtn = canUpload() ? '<button class="btn btn-sm btn-solid" id="upBtn" type="button">上传文件</button>' : '';
+      var lettersBtn = '<button class="btn btn-sm" id="lettersBtn" type="button">我的字母</button>';
       area.innerHTML = '<div class="who"><span class="av" style="background:' + avatarColor(state.me.username) + '">'
         + esc(initial(state.me.username)) + '</span><b>' + esc(state.me.username)
         + '<span class="role">' + esc(ROLE_NAME[state.me.role] || '成员') + '</span></b></div>'
-        + adminBtn + upBtn
+        + adminBtn + upBtn + lettersBtn
         + '<button class="btn btn-sm" id="logoutBtn" type="button">退出</button>';
     } else {
       area.innerHTML = '<button class="btn btn-sm" id="loginBtn" type="button">登录 / 注册</button>'
@@ -1510,6 +1556,8 @@
     if (loginBtn) loginBtn.addEventListener('click', function () { openAuth('login'); });
     var adminBtnEl = $('adminBtn');
     if (adminBtnEl) adminBtnEl.addEventListener('click', openAdmin);
+    var lettersBtnEl = $('lettersBtn');
+    if (lettersBtnEl) lettersBtnEl.addEventListener('click', openLetters);
     var logoutBtn = $('logoutBtn');
     if (logoutBtn) logoutBtn.addEventListener('click', logout);
     var up = $('upBtn');
@@ -2282,6 +2330,13 @@
   $('adminClose').addEventListener('click', function () { closeModal($('adminMask')); });
   $('adminDone').addEventListener('click', function () { closeModal($('adminMask')); });
   
+  $('lettersForm').addEventListener('submit', saveMyLetters);
+  $('lettersClear').addEventListener('click', clearMyLetters);
+  $('lettersClose').addEventListener('click', function () { closeModal($('lettersMask')); });
+  $('lettersMask').addEventListener('click', function (e) {
+    if (e.target === $('lettersMask')) closeModal($('lettersMask'));
+  });
+
   $('previewClose').addEventListener('click', closePreview);
   $('previewDone').addEventListener('click', closePreview);
   $('previewMask').addEventListener('click', function (e) {
