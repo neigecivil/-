@@ -522,14 +522,14 @@ test('整站用量提醒', async (t) => {
   });
 });
 test('账号首字接口', async (t) => {
-  await t.test('没登录也能读，只有首字', async () => {
+  await t.test('没登录也能读，长名字会被截到四个字', async () => {
     const { env } = setup();
-    await call(env, '/api/register', { method: 'POST', body: { username: '小明同学', password: 'harbor-lantern-77', bootstrapCode: 'OPEN-SESAME' } });
+    await call(env, '/api/register', { method: 'POST', body: { username: '小明同学爱看书', password: 'harbor-lantern-77', bootstrapCode: 'OPEN-SESAME' } });
     const r = await call(env, '/api/letters');
     assert.equal(r.status, 200);
     assert.equal(r.data.letters.length, 1);
-    assert.equal(r.data.letters[0].letter, '小');
-    assert.equal(JSON.stringify(r.data).includes('小明同学'), false);
+    assert.equal(r.data.letters[0].letter, '小明同学');
+    assert.equal(JSON.stringify(r.data).includes('小明同学爱看书'), false);
   });
 
   await t.test('注册之后马上能多出一个', async () => {
@@ -543,6 +543,6 @@ test('账号首字接口', async (t) => {
 
     const after = await call(env, '/api/letters');
     assert.equal(after.data.letters.length, 2);
-    assert.equal(after.data.letters[0].letter, '阿');
+    assert.equal(after.data.letters[0].letter, '阿强');
   });
 });

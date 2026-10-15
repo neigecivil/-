@@ -288,12 +288,12 @@ function createService(options) {
     return { ok: true, code: normalized };
   }
 
-  /* 最近注册的几个账号，各取昵称的第一个字，给背景字母用。
-     只给一个字，不外传完整昵称。 */
+  /* 最近注册的几个账号，各取昵称的前四个字，给背景字母用。
+     每个账号只在这一处出现一次，最多四个字，不外传完整昵称。 */
   async function recentLetters() {
     const rows = await store.users.recent(4);
     return rows.map((u) => ({
-      letter: String(u.username || '?').trim().charAt(0).toUpperCase() || '?',
+      letter: String(u.username || '?').trim().slice(0, 4) || '?',
       at: u.created_at,
     }));
   }

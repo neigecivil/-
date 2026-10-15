@@ -1100,7 +1100,7 @@
     if (letter.el.parentNode) letter.el.parentNode.removeChild(letter.el);
   }
 
-  /* 拉最近注册的账号，各摆一个字母：最多四个，固定默认灰，不会自己消失。 */
+  /* 拉最近注册的账号，各摆一串名字（最多四个字）：最多四组，固定默认灰，不会自己消失。 */
   async function loadMemberLetters() {
     try {
       var data = await api('/api/letters');
@@ -1866,7 +1866,7 @@
         closeModal($('authMask'));
         renderUser();
         toast(wasLogin ? '登录成功，' + state.me.username : '账号建好了，欢迎加入');
-        /* 新账号注册完，背景里就多一个字母（最多四个，默认灰）。 */
+        /* 新账号注册完，背景里就多一组它的名字（最多四个字，默认灰）。 */
         if (!wasLogin) loadMemberLetters();
         loadQuota();
         if (state.pendingUpload) {

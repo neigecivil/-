@@ -795,7 +795,7 @@ test('背景字母用的账号首字', async (t) => {
     await makeAdmin(ctx);
     const letters = await ctx.svc.recentLetters();
     assert.equal(letters.length, 1);
-    assert.equal(letters[0].letter, '管');
+    assert.equal(letters[0].letter, '管理员');
   });
 
   await t.test('新的排前面，最多给四个', async () => {
@@ -808,23 +808,29 @@ test('背景字母用的账号首字', async (t) => {
     }
     const letters = await ctx.svc.recentLetters();
     assert.equal(letters.length, 4);
-    assert.equal(letters[0].letter, '成');
-    assert.equal(letters[3].letter, '成');
+    assert.equal(letters[0].letter, '成员4');
+    assert.equal(letters[3].letter, '成员1');
   });
 
-  await t.test('只给首字，不给完整昵称', async () => {
+  await t.test('长名字只给前四个字，完整昵称不外传', async () => {
     const ctx = setup({ bootstrapCode: 'OPEN-SESAME' });
-    await ctx.svc.register({ username: '小明同学', password: 'harbor-lantern-77', inviteCode: 'OPEN-SESAME' });
+    await ctx.svc.register({ username: '凌晨两点半的猫', password: 'harbor-lantern-77', inviteCode: 'OPEN-SESAME' });
     const letters = await ctx.svc.recentLetters();
-    const json = JSON.stringify(letters);
-    assert.equal(json.includes('小明同学'), false);
-    assert.equal(letters[0].letter, '小');
+    assert.equal(JSON.stringify(letters).includes('凌晨两点半的猫'), false);
+    assert.equal(letters[0].letter, '凌晨两点');
   });
 
-  await t.test('英文昵称取大写首字母', async () => {
+  await t.test('名字超过四个字只取前四个', async () => {
+    const ctx = setup({ bootstrapCode: 'OPEN-SESAME' });
+    await ctx.svc.register({ username: '这是个很长的昵称', password: 'harbor-lantern-77', inviteCode: 'OPEN-SESAME' });
+    const letters = await ctx.svc.recentLetters();
+    assert.equal(letters[0].letter, '这是个很');
+  });
+
+  await t.test('英文昵称原样取前四个', async () => {
     const ctx = setup({ bootstrapCode: 'OPEN-SESAME' });
     await ctx.svc.register({ username: 'alice', password: 'harbor-lantern-77', inviteCode: 'OPEN-SESAME' });
     const letters = await ctx.svc.recentLetters();
-    assert.equal(letters[0].letter, 'A');
+    assert.equal(letters[0].letter, 'alic');
   });
 });
