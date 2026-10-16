@@ -467,13 +467,15 @@
   body.veil-off header.masthead { height: 0; padding: 0; border-bottom: 0; background: transparent; }
   body.veil-off header .shell { padding: 0; }
   body.veil-off header .masthead-row { gap: 0; }
-  body.veil-off header .tools { position: fixed; right: 22px; top: 22px; z-index: 90; }
+  /* 恢复按钮钉在右上角。它在背景模式下会临时挂到 body 上，
+     这样就不用跟顶部那套（手机上是另一套）布局纠缠了。 */
   body.veil-off #veilBtn {
-    opacity: .32;
-    background: var(--surface); border: 1px solid var(--line);
-    box-shadow: 0 6px 18px rgba(0, 0, 0, .14);
+    position: fixed; right: 18px; top: 18px; left: auto; bottom: auto;
+    z-index: 90; opacity: .45;
+    background: var(--text); border-color: transparent; color: var(--surface);
+    box-shadow: 0 8px 22px rgba(0, 0, 0, .22);
   }
-  body.veil-off #veilBtn:hover { opacity: 1; }
+  body.veil-off #veilBtn:hover { opacity: .95; }
   .btn-icon.on { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
 
   .page-wash {
@@ -1083,12 +1085,20 @@
   /* ── 白框开关 ───────────────────────────────────────────────
      打开后把列表、弹窗、输入框的底色撤掉，背景字母直接露出来。 */
   var VEIL_KEY = 'reshub_veil';
+  var veilHome = null;   /* 按钮原来待的地方，恢复时放回去 */
   function applyVeil(off) {
     if (off) document.body.classList.add('veil-off');
     else document.body.classList.remove('veil-off');
     try { localStorage.setItem(VEIL_KEY, off ? 'off' : 'on'); } catch (e) {}
     var btn = $('veilBtn');
     if (!btn) return;
+    /* 背景模式下把按钮搬出顶部区域，免得被手机那套布局挤到边角去。 */
+    if (off) {
+      if (!veilHome) veilHome = { parent: btn.parentNode, next: btn.nextSibling };
+      if (btn.parentNode !== document.body) document.body.appendChild(btn);
+    } else if (veilHome && veilHome.parent && btn.parentNode !== veilHome.parent) {
+      veilHome.parent.insertBefore(btn, veilHome.next);
+    }
     btn.innerHTML = off ? ICON_FRAME_OFF : ICON_FRAME;
     var label = off ? '把白框加回来' : '屏蔽白框，直接看背景';
     btn.setAttribute('aria-label', label);
