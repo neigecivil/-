@@ -947,6 +947,23 @@
     toastTimer = setTimeout(function () { el.classList.remove('show'); }, 2600);
   }
 
+  /* 服务端说没登录，说明 local 这边以为的登录状态已经不作数了
+     （cookie 过期、被清掉、或者在别的设备上退过）。
+     这时把界面切回未登录，别顶着一个点不动的管理面板。 */
+  var sessionLostAt = 0;
+  function sessionLost(msg) {
+    if (state.me) {
+      state.me = null;
+      try { renderUser(); } catch (e) {}
+      try { loadList(); } catch (e) {}
+    }
+    var t = Date.now();
+    if (t - sessionLostAt > 8000) {
+      sessionLostAt = t;
+      toast(msg && msg.indexOf('失效') >= 0 ? msg : '登录状态过期了，重新登录一下');
+    }
+  }
+
   async function api(path, options) {
     var opts = options || {};
     var headers = Object.assign({}, opts.headers || {});
@@ -961,6 +978,7 @@
     var data = null;
     try { data = text ? JSON.parse(text) : null; } catch (e) { data = null; }
     if (!res.ok || (data && data.ok === false)) {
+      if (res.status === 401) sessionLost((data && data.error) || '');
       throw new Error((data && data.error) || '网络不太顺，稍后再试试');
     }
     return data;
@@ -2169,6 +2187,8 @@
   }
 
   function openAdmin() {
+    /* 保险：非管理员根本打不开这个面板（按钮本来也不渲染给他们）。 */
+    if (!isAdmin()) { toast('管理面板只有管理员能打开'); return; }
     $('invResult').hidden = true;
     openModal($('adminMask'));
     switchAdminTab(state.adminTab);
