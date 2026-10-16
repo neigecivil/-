@@ -254,18 +254,44 @@ async function handleApi(request, env, url) {
   return json({ ok: false, error: '没有这个接口' }, 404);
 }
 
+/* 几条基础安全头。HSTS 让浏览器以后只用 https 访问，
+   另外几条挡掉内容嗅探和跨站嵌套。已有的头不覆盖。 */
+function withSecurityHeaders(response) {
+  const headers = new Headers(response.headers);
+  if (!headers.has('strict-transport-security')) {
+    headers.set('strict-transport-security', 'max-age=15552000; includeSubDomains');
+  }
+  if (!headers.has('x-content-type-options')) headers.set('x-content-type-options', 'nosniff');
+  if (!headers.has('referrer-policy')) headers.set('referrer-policy', 'strict-origin-when-cross-origin');
+  if (!headers.has('x-frame-options')) headers.set('x-frame-options', 'SAMEORIGIN');
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: headers,
+  });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    /* 用 http 打开时，登录框会被浏览器标成"不安全"。
+       统一顶到 https；本地预览是 http://127.0.0.1，得网开一面。 */
+    const isLocal = url.hostname === '127.0.0.1' || url.hostname === 'localhost' || url.hostname === '::1';
+    if (url.protocol === 'http:' && !isLocal) {
+      url.protocol = 'https:';
+      return Response.redirect(url.toString(), 301);
+    }
+
     if (url.pathname.startsWith('/api/')) {
       try {
-        return await handleApi(request, env, url);
+        return withSecurityHeaders(await handleApi(request, env, url));
       } catch (err) {
-        return fail(err);
+        return withSecurityHeaders(fail(err));
       }
     }
     /* 其余路径交给静态资源；public/ 里的文件由 Cloudflare 直接发出去。 */
-    if (env && env.ASSETS) return env.ASSETS.fetch(request);
-    return new Response('Not found', { status: 404 });
+    if (env && env.ASSETS) return withSecurityHeaders(await env.ASSETS.fetch(request));
+    return withSecurityHeaders(new Response('Not found', { status: 404 }));
   },
 };
